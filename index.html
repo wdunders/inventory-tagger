@@ -215,6 +215,39 @@
   body[data-theme="light"] td{border-bottom-color:#e7ebf1}
   body[data-theme="light"] tr.itemrow:hover{background:#f0f3f8}
   body[data-theme="light"] .gimg,body[data-theme="light"] .lbimg{background:#eef1f6}
+  /* ===== mobile (desktop unchanged) ===== */
+  @media(max-width:760px){
+    header{padding:10px 12px}
+    .brand{font-size:19px}
+    .rightctl{gap:6px}
+    .rightctl .ghost{padding:6px 9px}
+    .tab{padding:6px 10px;font-size:12.5px}
+    .tabs.tabscenter{margin-top:8px}
+    main{padding:12px 12px 72px}
+    .stats{gap:8px}
+    .stat{min-width:0;flex:1 1 calc(50% - 8px);padding:8px 10px}
+    .stat .n{font-size:17px}
+    .search{min-width:0}
+    .invtop{margin-top:10px}
+    .invtoolbar{width:100%;gap:8px}
+    .invtoolbar .search{flex:1 1 100%;order:-1}
+    .invtop .invtoolbar{margin-left:0}
+    .chartwrap{height:240px}
+    .chartwrap.tall{height:280px}
+    .pierow .chartwrap{min-width:0;flex-basis:100%}
+    .bigprofit{font-size:30px}
+    .modal{padding:18px}
+    .overlay{padding:16px 10px}
+    .itemedit .row,.itemedit .row2{grid-template-columns:1fr}
+    .homenav{grid-template-columns:1fr 1fr}
+    /* tables scroll instead of breaking the page */
+    #tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    #tbl thead,#tbl tbody{display:table;width:100%;min-width:680px}
+    #taxReport,#expenseList,#incomeStmt{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    #taxReport table,#expenseList table{min-width:560px}
+    .filters{gap:6px}
+    .fbtn{padding:6px 11px;font-size:12.5px}
+  }
 </style>
 </head>
 <body>
