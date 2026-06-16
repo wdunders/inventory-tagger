@@ -185,7 +185,15 @@
   .fbtn:hover{border-color:var(--accent)}
   .fbtn.on{background:var(--accent2);border-color:var(--accent2);color:#fff}
   .fbtn.clear{color:var(--muted);font-weight:500}
-  .homenav{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .brandbar{position:relative;display:flex;align-items:center;justify-content:center;min-height:30px}
+  .brand{font-size:23px;font-weight:750;letter-spacing:.3px}
+  .rightctl{position:absolute;right:0;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:10px}
+  .tabs.tabscenter{width:fit-content;max-width:100%;margin:9px auto 0;justify-content:center;flex-wrap:wrap}
+  .invtop{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;margin-top:12px}
+  .invtop .stats{order:1;margin-top:0;flex:1 1 360px}
+  .invtop .invtoolbar{order:2;margin:0 0 0 auto}
+  .todoscroll{max-height:340px;overflow-y:auto;padding-right:4px}
+  .homenav{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
   @media(max-width:720px){.homenav{grid-template-columns:1fr 1fr}}
   .navbtn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 10px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--txt);font-size:15px;font-weight:650;cursor:pointer;transition:.12s}
   .navbtn:hover{border-color:var(--accent);background:var(--panel2);transform:translateY(-2px)}
@@ -197,24 +205,36 @@
   .bchip:hover{border-color:var(--accent);color:var(--txt)}
   .bchip.on{background:var(--sold);border-color:var(--sold);color:#06210f}
   .bchip.add{color:var(--accent);border-style:dashed}
+  #bulkbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--accent2);border-radius:10px;padding:8px 12px;margin-bottom:10px}
+  .bulkn{font-weight:700}
+  .bulkcb,#selAll{width:16px;height:16px;cursor:pointer;accent-color:var(--accent)}
+  /* light theme */
+  body[data-theme="light"]{--bg:#f4f6f9;--panel:#ffffff;--panel2:#eef1f6;--line:#d9dee7;--txt:#1b2430;--muted:#5d6675}
+  body[data-theme="light"] header{background:linear-gradient(180deg,#ffffff,#f4f6f9)}
+  body[data-theme="light"] td{border-bottom-color:#e7ebf1}
+  body[data-theme="light"] tr.itemrow:hover{background:#f0f3f8}
+  body[data-theme="light"] .gimg,body[data-theme="light"] .lbimg{background:#eef1f6}
 </style>
 </head>
 <body>
 <header>
-  <div class="toprow">
-    <h1><span class="logo"></span> Williams</h1>
-    <div class="tabs">
-      <button class="tab active" id="tab-home" onclick="switchPage('home')">Home</button>
-      <button class="tab" id="tab-inv" onclick="switchPage('inv')">Inventory</button>
-      <button class="tab" id="tab-insights" onclick="switchPage(&#39;insights&#39;)">Insights</button>
-      <button class="tab" id="tab-statements" onclick="switchPage(&#39;statements&#39;)">Statements</button>
-      <button class="tab" id="tab-calc" onclick="switchPage(&#39;calc&#39;)">Calculator</button>
+  <div class="brandbar">
+    <div class="brand">Williams</div>
+    <div class="rightctl">
+      <span id="syncBadge" style="font-size:11.5px;color:var(--muted);opacity:.55;transition:opacity .3s">Synced</span>
+      <button class="ghost iconbtn" id="themeBtn" onclick="toggleTheme()" title="Light / dark">🌙</button>
+      <button class="ghost" onclick="logout()" title="Log out">Log out</button>
     </div>
-    <span class="spacer"></span>
-    <span id="syncBadge" style="font-size:11.5px;color:var(--muted);opacity:.55;transition:opacity .3s">Synced</span>
-    <button class="ghost" onclick="logout()" title="Log out">Log out</button>
+  </div>
+  <div class="tabs tabscenter">
+    <button class="tab active" id="tab-home" onclick="switchPage('home')">Home</button>
+    <button class="tab" id="tab-inv" onclick="switchPage('inv')">Inventory</button>
+    <button class="tab" id="tab-insights" onclick="switchPage('insights')">Insights</button>
+    <button class="tab" id="tab-statements" onclick="switchPage('statements')">Statements</button>
+    <button class="tab" id="tab-calc" onclick="switchPage('calc')">Calculator</button>
   </div>
   <div id="invHead" style="display:none">
+    <div class="invtop">
     <div class="invtoolbar">
       <input id="search" class="search" placeholder="Search… or 7a / 7">
       <button class="primary" id="addBtn" onclick="openModal()">+ Add transaction</button>
@@ -228,11 +248,13 @@
     <div class="stat"><div class="n">120</div><div class="l">Items</div></div>
     <div class="stat"><div class="n">$12,495</div><div class="l">Total spend</div></div>
     <div class="stat"><div class="n" style="color:#eab308">10</div><div class="l">Incoming (shipping to me)</div></div><div class="stat"><div class="n" style="color:#f59e0b">0</div><div class="l">In house · Unlisted</div></div><div class="stat"><div class="n" style="color:#a855f7">46</div><div class="l">In house · Listed</div></div><div class="stat"><div class="n" style="color:#22c55e">64</div><div class="l">Sold · Shipped out</div></div></div>
+    </div>
     <div class="filters" id="statusfilters"><span class="hint" style="margin-right:4px">Filter:</span><span class="chipfilter " onclick="toggleFilter(&#39;incoming&#39;)"><span class="dot" style="background:#eab308"></span>Incoming (shipping to me)</span><span class="chipfilter " onclick="toggleFilter(&#39;unlisted&#39;)"><span class="dot" style="background:#f59e0b"></span>In house · Unlisted</span><span class="chipfilter " onclick="toggleFilter(&#39;listed&#39;)"><span class="dot" style="background:#a855f7"></span>In house · Listed</span><span class="chipfilter " onclick="toggleFilter(&#39;sold&#39;)"><span class="dot" style="background:#22c55e"></span>Sold · Shipped out</span><select class="catselect" onchange="setCatFilter(this.value)"><option value="">All types</option><option>Accessories</option><option>Apple TV</option><option>Cameras</option><option>Console Games</option><option>DS Consoles</option><option>DS Games</option><option>Electronics</option><option>Lenses</option><option>Mac Mini</option><option>Sim Racing</option><option>Wearables</option></select><span class="viewtoggle" style="margin-left:auto"><button class="vbtn " onclick="setView(&#39;list&#39;)">List</button><button class="vbtn on" onclick="setView(&#39;grid&#39;)">Grid</button></span></div>
   </div>
 </header>
 <main>
   <section class="page active" id="page-inv">
+    <div id="bulkbar" style="display:none"></div>
     <table id="tbl" style="display: none;"><thead><tr id="headrow"><th onclick="setSort(&#39;ref&#39;)">#<span class="arrow"> ▲</span></th><th onclick="setSort(&#39;date&#39;)">Date<span class="arrow"></span></th><th onclick="setSort(&#39;label&#39;)"><span class="arrow"></span></th><th onclick="setSort(&#39;name&#39;)">Item<span class="arrow"></span></th><th>Tags / type</th><th onclick="setSort(&#39;status&#39;)">Status<span class="arrow"></span></th><th onclick="setSort(&#39;cost&#39;)">Cost<span class="arrow"></span></th><th>P / L</th><th>Sold</th><th></th></tr></thead><tbody id="tbody"></tbody></table>
     <div id="grid" class="gridwrap" style="display: grid;"><div class="gcard">
       <div class="gimg" title="Click to add/change image" onclick="openImgMenu(event,&#39;isopmws&#39;,&#39;3m3ibxa&#39;)"><img src="data:image/jpeg;base64,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" alt=""><span class="gref">#1a</span><span class="glabel">a</span></div>
@@ -1919,21 +1941,24 @@
   </section>
 
   <section class="page" id="page-home">
-    <div class="homenav">
-      <button class="navbtn" onclick="switchPage('inv')"><span class="navico">📦</span><span>Inventory</span></button>
-      <button class="navbtn" onclick="switchPage('insights')"><span class="navico">📊</span><span>Insights</span></button>
-      <button class="navbtn" onclick="switchPage('statements')"><span class="navico">🧾</span><span>Statements</span></button>
-      <button class="navbtn" onclick="switchPage('calc')"><span class="navico">🧮</span><span>Calculator</span></button>
-    </div>
-    <div class="chartgrid" style="margin-top:16px">
+    <div class="chartgrid">
       <div class="card full">
         <h3>Revenue &amp; profit</h3><div class="sub">All-time snapshot</div>
         <div class="stats" id="homeStats" style="margin:6px 0 12px"></div>
         <div class="chartwrap"><canvas id="chartHome"></canvas><div class="nochart" id="homeNC" style="display:none">No sales recorded yet — once you mark items sold, this fills in.</div></div>
       </div>
-      <div class="card full">
-        <h3>To-do</h3><div class="sub">Items needing attention</div>
-        <div id="homeTodo" class="lb"></div>
+      <div class="card">
+        <h3>To-do</h3><div class="sub" id="todoCount">Items needing attention</div>
+        <div id="homeTodo" class="lb todoscroll"></div>
+      </div>
+      <div class="card">
+        <h3>Go to</h3><div class="sub">Jump to a section</div>
+        <div class="homenav">
+          <button class="navbtn" onclick="switchPage('inv')"><span class="navico">📦</span><span>Inventory</span></button>
+          <button class="navbtn" onclick="switchPage('insights')"><span class="navico">📊</span><span>Insights</span></button>
+          <button class="navbtn" onclick="switchPage('statements')"><span class="navico">🧾</span><span>Statements</span></button>
+          <button class="navbtn" onclick="switchPage('calc')"><span class="navico">🧮</span><span>Calculator</span></button>
+        </div>
       </div>
     </div>
   </section>
@@ -2024,6 +2049,7 @@
       <div class="card">
         <h3>Profit calculator</h3><div class="sub">Pick your selling plan, then enter the numbers.</div>
         <div class="field"><label>Selling plan</label><select id="c_plan" onchange="fillPlan()"></select></div>
+        <div class="field"><label>eBay category (sets fee rate)</label><select id="c_cat" onchange="computeCalc()"></select></div>
         <div class="field"><label>Item cost ($)</label><input id="c_cost" type="number" step="0.01" placeholder="0.00" oninput="computeCalc()"><div class="hint" id="c_costsub" style="margin-top:5px"></div></div>
         <div style="display:none"><input id="c_fvf"><input id="c_fixed"><input id="c_ad"></div>
         <div class="grid2">
@@ -2157,7 +2183,8 @@ const EMBEDDED_DATA={"transactions":[{"id":"isopmws","txnNumber":"1","date":"202
 const KEY='inventoryTagger.v4';
 let state={transactions:[],expenses:[]};
 let sortKey='ref', sortDir='asc';
-let filterStatuses=new Set(), filterCats=new Set(), filterPeriod='all', search='';
+let filterStatuses=new Set(), filterCats=new Set(), filterPeriod='all', filterCostMin=null, filterCostMax=null, search='';
+let selectedItems=new Set();
 let editingId=null, page='inv', period='week', viewMode='list', lineRange='all';
 let charts={}, saleRef=null, pendingImg=null;
 
@@ -2298,6 +2325,7 @@ function saleFees(it){if(!it.sale)return 0;return num(it.sale.fees)+num(it.sale.
 function saleProfit(t,it){if(!it.sale)return null;return saleGross(it)-saleFees(it)-itemCost(t,it);}
 function hasSaleData(it){return it.sale&&saleGross(it)>0;}
 function daysToSell(t,it){if(!it.sale||!it.sale.date)return null;return Math.round((new Date(it.sale.date)-new Date(t.date))/86400000);}
+function daysSince(iso){if(!iso)return 0;return Math.max(0,Math.round((Date.now()-new Date(iso+'T00:00:00'))/86400000));}
 /* expected profit/loss for unsold; actual for sold */
 function estPL(t,it){
   if(it.status==='sold'){const p=saleProfit(t,it);return p==null?null:{val:p,est:false};}
@@ -2334,19 +2362,24 @@ function renderFilters(){
   const sLbl=filterStatuses.size?`Status · ${filterStatuses.size}`:'Status';
   const tLbl=filterCats.size?`Type · ${filterCats.size}`:'Type';
   const pLbl=filterPeriod==='all'?'Period':PERIOD_LABELS[filterPeriod];
-  const any=filterStatuses.size||filterCats.size||filterPeriod!=='all';
+  const costOn=filterCostMin!=null||filterCostMax!=null;
+  const cLbl=costOn?`Cost · ${filterCostMin!=null?'$'+filterCostMin:'$0'}–${filterCostMax!=null?'$'+filterCostMax:'∞'}`:'Cost';
+  const any=filterStatuses.size||filterCats.size||filterPeriod!=='all'||costOn;
   document.getElementById('statusfilters').innerHTML=
     `<button class="fbtn ${filterStatuses.size?'on':''}" onclick="openFilterMenu(event,'status')">${sLbl}</button>`+
     `<button class="fbtn ${filterCats.size?'on':''}" onclick="openFilterMenu(event,'type')">${tLbl}</button>`+
     `<button class="fbtn ${filterPeriod!=='all'?'on':''}" onclick="openFilterMenu(event,'period')">${esc(pLbl)}</button>`+
+    `<button class="fbtn ${costOn?'on':''}" onclick="openFilterMenu(event,'cost')">${esc(cLbl)}</button>`+
     (any?`<button class="fbtn clear" onclick="clearFilters()">✕ clear</button>`:'')+
     `<span class="viewtoggle" style="margin-left:auto"><button class="vbtn ${viewMode==='list'?'on':''}" onclick="setView('list')">List</button><button class="vbtn ${viewMode==='grid'?'on':''}" onclick="setView('grid')">Grid</button></span>`;
 }
 function buildFilterMenu(kind){
   if(kind==='status')return STATUSES.map(s=>`<div class="opt" onclick="toggleFilter('${s.id}')"><span class="dot" style="background:${s.raw}"></span>${s.label}<span style="margin-left:auto;color:var(--accent)">${filterStatuses.has(s.id)?'✓':''}</span></div>`).join('');
   if(kind==='type'){const c=allTypes();return c.length?c.map(t=>`<div class="opt" onclick="toggleCat('${esc(t)}')">${esc(t)}<span style="margin-left:auto;color:var(--accent)">${filterCats.has(t)?'✓':''}</span></div>`).join(''):'<div class="opt">No types yet</div>';}
+  if(kind==='cost')return `<div style="padding:10px 12px;min-width:210px"><div style="display:flex;gap:8px;align-items:center"><input id="fcmin" type="number" placeholder="min $" value="${filterCostMin??''}" class="rangesel" style="width:88px"><span class="hint">to</span><input id="fcmax" type="number" placeholder="max $" value="${filterCostMax??''}" class="rangesel" style="width:88px"></div><button class="fbtn on" style="margin-top:10px;width:100%" onclick="applyCostFilter()">Apply</button></div>`;
   return Object.entries(PERIOD_LABELS).map(([k,l])=>`<div class="opt" onclick="setPeriodFilter('${k}')">${l}<span style="margin-left:auto;color:var(--accent)">${filterPeriod===k?'✓':''}</span></div>`).join('');
 }
+function applyCostFilter(){const mn=document.getElementById('fcmin').value,mx=document.getElementById('fcmax').value;filterCostMin=mn===''?null:num(mn);filterCostMax=mx===''?null:num(mx);closeFilterMenu();renderFilters();renderTable();}
 let _filterKind=null;
 function openFilterMenu(e,kind){
   e.stopPropagation();_filterKind=kind;
@@ -2356,9 +2389,10 @@ function openFilterMenu(e,kind){
 }
 function refreshFilterMenu(){if(_filterKind){const m=document.getElementById('filtermenu');if(m.classList.contains('show'))m.innerHTML=buildFilterMenu(_filterKind);}}
 function closeFilterMenu(){document.getElementById('filtermenu').classList.remove('show');_filterKind=null;}
+document.getElementById('filtermenu').addEventListener('click',e=>e.stopPropagation());
 function afterFilterChange(){renderFilters();renderTable();refreshFilterMenu();}
 function renderHead(){
-  document.getElementById('headrow').innerHTML=COLS.map(c=>{
+  document.getElementById('headrow').innerHTML='<th style="width:26px"><input type="checkbox" id="selAll" onclick="toggleSelectAll(this.checked)"></th>'+COLS.map(c=>{
     if(c.nosort)return `<th>${c.label}</th>`;
     const arrow=sortKey===c.key?(sortDir==='asc'?' ▲':' ▼'):'';
     return `<th onclick="setSort('${c.key}')">${c.label}<span class="arrow">${arrow}</span></th>`;
@@ -2383,13 +2417,31 @@ function visibleRows(){
   if(filterStatuses.size)rows=rows.filter(r=>filterStatuses.has(r.it.status));
   if(filterCats.size)rows=rows.filter(r=>(r.it.tags||[]).some(tg=>filterCats.has(tg)));
   if(filterPeriod!=='all'){const b=rangeBounds(filterPeriod);rows=rows.filter(r=>inRange(r.t.date,b));}
+  if(filterCostMin!=null||filterCostMax!=null)rows=rows.filter(r=>{const c=itemCost(r.t,r.it);return (filterCostMin==null||c>=filterCostMin)&&(filterCostMax==null||c<=filterCostMax);});
   rows=rows.filter(r=>matchSearch(r.t,r.it));rows.sort(compare);return rows;
 }
 function plCellHtml(t,it){
   const pl=estPL(t,it);if(!pl)return '<span class="hint">—</span>';
-  return `<span class="pl ${pl.val>=0?'pos':'neg'}">${pl.val>=0?'+':''}${money(pl.val)}</span>${pl.est?'<div class="plest">est. resale</div>':''}`;
+  let extra=pl.est?'<div class="plest">est. resale</div>':'';
+  if(!pl.est){const g=saleGross(it);if(g>0)extra=`<div class="plest">${(pl.val/g*100).toFixed(0)}% margin</div>`;}
+  return `<span class="pl ${pl.val>=0?'pos':'neg'}">${pl.val>=0?'+':''}${money(pl.val)}</span>${extra}`;
 }
+function renderBulkBar(){
+  const bar=document.getElementById('bulkbar');if(!bar)return;
+  const n=selectedItems.size;
+  if(!n){bar.style.display='none';bar.innerHTML='';return;}
+  bar.style.display='flex';
+  bar.innerHTML=`<span class="bulkn">${n} selected</span>`+
+    `<span class="hint">Set status:</span>`+
+    STATUSES.map(s=>`<button class="fbtn" onclick="bulkSetStatus('${s.id}')"><span class="dot" style="background:${s.raw};margin-right:6px"></span>${s.label}</button>`).join('')+
+    `<button class="fbtn clear" style="margin-left:auto" onclick="clearSelection()">Clear</button>`;
+}
+function toggleSelect(id){selectedItems.has(id)?selectedItems.delete(id):selectedItems.add(id);renderBulkBar();const a=document.getElementById('selAll');if(a)a.checked=false;}
+function toggleSelectAll(on){selectedItems=new Set();if(on)visibleRows().forEach(r=>selectedItems.add(r.it.id));renderTable();}
+function clearSelection(){selectedItems=new Set();renderTable();}
+function bulkSetStatus(st){state.transactions.forEach(t=>t.items.forEach(it=>{if(selectedItems.has(it.id))it.status=st;}));selectedItems=new Set();save();renderInv();}
 function renderTable(){
+  renderBulkBar();
   const rows=visibleRows();
   if(viewMode==='grid'){renderGrid(rows);document.getElementById('tbl').style.display='none';document.getElementById('grid').style.display=rows.length?'grid':'none';document.getElementById('emptystate').style.display=rows.length?'none':'block';return;}
   document.getElementById('grid').style.display='none';
@@ -2398,8 +2450,9 @@ function renderTable(){
     const tags=(r.it.tags||[]).map(tg=>`<span class="tag" style="background:${hashColor(tg)}">${esc(tg)}</span>`).join('')||'<span class="hint">—</span>';
     const sold=r.it.status==='sold';
     return `<tr class="itemrow">
+      <td><input type="checkbox" class="bulkcb" ${selectedItems.has(r.it.id)?'checked':''} onclick="toggleSelect('${r.it.id}')"></td>
       <td><span class="ref">${esc(itemRef(r.t,r.it))}</span></td>
-      <td class="txn">${fmtDate(r.t.date)}</td>
+      <td class="txn">${fmtDate(r.t.date)}<div class="plest">${daysSince(r.t.date)}d ago</div></td>
       <td>${labelChip(r.t,r.it)}</td>
       <td><span class="itemname">${esc(r.it.name)}</span>${r.it.isBundle?'<span class="bundletag">BUNDLE</span>':''}${r.t.note?`<div class="notetext">${esc(r.t.note)}</div>`:''}</td>
       <td><div class="tags">${tags}</div></td>
@@ -2641,10 +2694,12 @@ function renderHome(){
 function renderTodo(){
   const todos=[];
   flatItems().forEach(({t,it})=>{
-    if(it.status==='sold'&&hasSaleData(it)&&!(it.sale&&num(it.sale.shipping)>0))todos.push({t,it,msg:'Add the shipping cost you paid'});
+    if(it.status==='sold'&&hasSaleData(it)&&!isLocalBroker(it.sale&&it.sale.broker)&&!(it.sale&&num(it.sale.shipping)>0))todos.push({t,it,msg:'Add the shipping cost you paid'});
     else if(it.status==='sold'&&!hasSaleData(it))todos.push({t,it,msg:'Add sale details (price & fees)'});
   });
   const inc=flatItems().filter(({it})=>it.status==='incoming').length;
+  const cc=document.getElementById('todoCount');
+  if(cc)cc.textContent=todos.length?`${todos.length} item${todos.length===1?'':'s'} needing attention`:(inc?`All caught up · ${inc} incoming`:'All caught up 🎉');
   let h='';
   if(!todos.length&&!inc){h='<div class="hint" style="padding:16px">All caught up — nothing needs attention 🎉</div>';}
   else{
@@ -2678,23 +2733,27 @@ const CALC_PLANS={
   ebay_anchor:{label:'eBay AU — Pro Anchor',fvf:13.4,fixed:0.30,ad:0},
   local:{label:'Facebook / Gumtree / In person',fvf:0,fixed:0,ad:0},
 };
+/* eBay AU final value fee by category (incl GST). Most = 13.4%; a few differ. */
+const CALC_CATEGORIES=[['standard','Most categories',13.4],['guitars','Guitars & basses',7.25],['heavy','Heavy equipment',3],['nft','NFTs',5.5]];
 let calcInit=false;
 function v(id){return document.getElementById(id).value;}
 function renderCalc(){
   if(!calcInit){
     document.getElementById('c_plan').innerHTML=Object.entries(CALC_PLANS).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join('');
-    fillPlan(); calcInit=true;
+    document.getElementById('c_cat').innerHTML=CALC_CATEGORIES.map(c=>`<option value="${c[0]}">${c[1]} (${c[2]}%)</option>`).join('');
+    calcInit=true;
   }
   computeCalc();
 }
-function fillPlan(){
-  const p=CALC_PLANS[v('c_plan')]||CALC_PLANS.ebay_free;
-  document.getElementById('c_planlabel').textContent=p.label+(p.fvf?` · ${p.fvf}% + ${money(p.fixed)} fees`:' · no fees');
-  document.getElementById('c_fvf').value=p.fvf;document.getElementById('c_fixed').value=p.fixed;document.getElementById('c_ad').value=p.ad;
-  computeCalc();
+function fillPlan(){computeCalc();
 }
 function computeCalc(){
-  const fvf=num(v('c_fvf'))/100, fixed=num(v('c_fixed')), ad=num(v('c_ad'))/100;
+  const local=v('c_plan')==='local';
+  const cat=CALC_CATEGORIES.find(c=>c[0]===v('c_cat'))||CALC_CATEGORIES[0];
+  const fvfPct=local?0:cat[2];
+  const fvf=fvfPct/100, fixed=local?0:0.30, ad=0;
+  const pl=CALC_PLANS[v('c_plan')]||CALC_PLANS.ebay_free;
+  const lab=document.getElementById('c_planlabel');if(lab)lab.textContent=local?pl.label+' · no fees':`${pl.label} · ${fvfPct}% + ${money(fixed)}`;
   const sale=num(v('c_sale')), shipc=num(v('c_shipchg')), cost=num(v('c_cost')), post=num(v('c_postage')), other=num(v('c_other'));
   const gross=sale+shipc;
   const fees=gross*fvf+(sale>0?fixed:0)+sale*ad;
@@ -2719,7 +2778,7 @@ function computeCalc(){
     </div>
     <div style="margin-top:16px">
       <div class="calcline"><span>Gross received (sale + shipping)</span><span>${money(gross)}</span></div>
-      <div class="calcline"><span>Fees (${num(v('c_fvf'))}%${fixed?` + ${money(fixed)}`:''}${ad?` + ${num(v('c_ad'))}% ad`:''})</span><span class="neg">−${money(fees)}</span></div>
+      <div class="calcline"><span>eBay fees (${fvfPct}%${fixed?` + ${money(fixed)}`:''})</span><span class="neg">−${money(fees)}</span></div>
       <div class="calcline"><span>Item cost</span><span class="neg">−${money(cost)}</span></div>
       <div class="calcline"><span>Postage + other</span><span class="neg">−${money(post+other)}</span></div>
       <div class="calcline total"><span>Net profit</span><span class="${profit>=0?'pos':'neg'}">${money(profit)}</span></div>
@@ -2737,7 +2796,7 @@ function setSort(k){if(sortKey===k){sortDir=sortDir==='asc'?'desc':'asc';}else{s
 function toggleFilter(id){filterStatuses.has(id)?filterStatuses.delete(id):filterStatuses.add(id);afterFilterChange();}
 function toggleCat(c){filterCats.has(c)?filterCats.delete(c):filterCats.add(c);afterFilterChange();}
 function setPeriodFilter(p){filterPeriod=p;closeFilterMenu();renderFilters();renderTable();}
-function clearFilters(){filterStatuses.clear();filterCats.clear();filterPeriod='all';closeFilterMenu();renderInv();}
+function clearFilters(){filterStatuses.clear();filterCats.clear();filterPeriod='all';filterCostMin=null;filterCostMax=null;closeFilterMenu();renderInv();}
 function setView(v){viewMode=v;renderInv();}
 document.getElementById('search').addEventListener('input',e=>{search=e.target.value;if(page==='inv')renderTable();});
 
@@ -2781,6 +2840,7 @@ function openSale(txnId,itemId){
 function closeSale(){document.getElementById('saleOverlay').classList.remove('show');saleRef=null;}
 document.getElementById('saleOverlay').addEventListener('click',e=>{if(e.target.id==='saleOverlay')closeSale();});
 const BROKER_DEFAULTS=['eBay','Facebook','Gumtree','In person'];
+function isLocalBroker(b){return /facebook|gumtree|in person|local|pickup|cash/.test((b||'').toLowerCase());}
 let _brokerOpts=[];
 function renderBrokerPick(sel){
   const wrap=document.getElementById('x_brokerPick');if(!wrap)return;
@@ -2933,6 +2993,8 @@ async function doLogin(){
   }catch(e){if(msg)msg.textContent='Could not reach the server.';_loggingIn=false;}
 }
 function logout(){AUTH='';localStorage.removeItem('it_token');showLogin('Logged out.');}
+function applyTheme(t){document.body.setAttribute('data-theme',t);const b=document.getElementById('themeBtn');if(b)b.textContent=t==='light'?'☀️':'🌙';try{localStorage.setItem('it_theme',t);}catch(e){}}
+function toggleTheme(){applyTheme((localStorage.getItem('it_theme')||'dark')==='dark'?'light':'dark');}
 async function bootHosted(){
   if(!AUTH){showLogin();return;}
   let fromServer=false;
@@ -2948,6 +3010,7 @@ async function bootHosted(){
   if(!fromServer&&AUTH)serverSave();   // seed the cloud on first run
   switchPage('home');
 }
+applyTheme(localStorage.getItem('it_theme')||'dark');
 bootHosted();
 </script>
 
