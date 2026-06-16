@@ -179,29 +179,50 @@
   .menu .opt:hover{background:var(--panel2)}
   .notetext{font-size:12px;color:var(--muted);margin-top:3px;max-width:300px}
   @media(max-width:720px){.grid3,.grid2{grid-template-columns:1fr}.itemedit .row,.itemedit .row2{grid-template-columns:1fr}}
+  /* new: header toolbar, filter buttons, home, sale sections, broker chips */
+  .invtoolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+  .fbtn{padding:7px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:13px;font-weight:600;cursor:pointer}
+  .fbtn:hover{border-color:var(--accent)}
+  .fbtn.on{background:var(--accent2);border-color:var(--accent2);color:#fff}
+  .fbtn.clear{color:var(--muted);font-weight:500}
+  .homenav{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:720px){.homenav{grid-template-columns:1fr 1fr}}
+  .navbtn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 10px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--txt);font-size:15px;font-weight:650;cursor:pointer;transition:.12s}
+  .navbtn:hover{border-color:var(--accent);background:var(--panel2);transform:translateY(-2px)}
+  .navico{font-size:26px}
+  .salesec{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:10px;background:#161a21}
+  .seclabel{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin-bottom:8px}
+  .brokerpick{display:flex;flex-wrap:wrap;gap:6px}
+  .bchip{font-size:12.5px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-weight:600;color:var(--muted)}
+  .bchip:hover{border-color:var(--accent);color:var(--txt)}
+  .bchip.on{background:var(--sold);border-color:var(--sold);color:#06210f}
+  .bchip.add{color:var(--accent);border-style:dashed}
 </style>
 </head>
 <body>
 <header>
   <div class="toprow">
-    <h1><span class="logo"></span> Inventory Tagger</h1>
+    <h1><span class="logo"></span> Williams</h1>
     <div class="tabs">
-      <button class="tab active" id="tab-inv" onclick="switchPage(&#39;inv&#39;)">Inventory</button>
+      <button class="tab active" id="tab-home" onclick="switchPage('home')">Home</button>
+      <button class="tab" id="tab-inv" onclick="switchPage('inv')">Inventory</button>
       <button class="tab" id="tab-insights" onclick="switchPage(&#39;insights&#39;)">Insights</button>
       <button class="tab" id="tab-statements" onclick="switchPage(&#39;statements&#39;)">Statements</button>
       <button class="tab" id="tab-calc" onclick="switchPage(&#39;calc&#39;)">Calculator</button>
     </div>
     <span class="spacer"></span>
-    <input id="search" class="search" placeholder="Search… or 7a / 7">
-    <button class="primary" id="addBtn" onclick="openModal()" style="">+ Add transaction</button>
-    <button class="ghost" onclick="exportJSON()">Export</button>
-    <button class="ghost" onclick="document.getElementById(&#39;importfile&#39;).click()">Import</button>
-    <button class="ghost" onclick="exportCSV()">CSV</button>
-    <input type="file" id="importfile" accept="application/json" style="display:none" onchange="importJSON(event)">
     <span id="syncBadge" style="font-size:11.5px;color:var(--muted);opacity:.55;transition:opacity .3s">Synced</span>
     <button class="ghost" onclick="logout()" title="Log out">Log out</button>
   </div>
-  <div id="invHead" style="">
+  <div id="invHead" style="display:none">
+    <div class="invtoolbar">
+      <input id="search" class="search" placeholder="Search… or 7a / 7">
+      <button class="primary" id="addBtn" onclick="openModal()">+ Add transaction</button>
+      <button class="ghost" onclick="exportJSON()">Export</button>
+      <button class="ghost" onclick="document.getElementById('importfile').click()">Import</button>
+      <button class="ghost" onclick="exportCSV()">CSV</button>
+      <input type="file" id="importfile" accept="application/json" style="display:none" onchange="importJSON(event)">
+    </div>
     <div class="stats" id="stats">
     <div class="stat"><div class="n">47</div><div class="l">Transactions</div></div>
     <div class="stat"><div class="n">120</div><div class="l">Items</div></div>
@@ -209,16 +230,6 @@
     <div class="stat"><div class="n" style="color:#eab308">10</div><div class="l">Incoming (shipping to me)</div></div><div class="stat"><div class="n" style="color:#f59e0b">0</div><div class="l">In house · Unlisted</div></div><div class="stat"><div class="n" style="color:#a855f7">46</div><div class="l">In house · Listed</div></div><div class="stat"><div class="n" style="color:#22c55e">64</div><div class="l">Sold · Shipped out</div></div></div>
     <div class="filters" id="statusfilters"><span class="hint" style="margin-right:4px">Filter:</span><span class="chipfilter " onclick="toggleFilter(&#39;incoming&#39;)"><span class="dot" style="background:#eab308"></span>Incoming (shipping to me)</span><span class="chipfilter " onclick="toggleFilter(&#39;unlisted&#39;)"><span class="dot" style="background:#f59e0b"></span>In house · Unlisted</span><span class="chipfilter " onclick="toggleFilter(&#39;listed&#39;)"><span class="dot" style="background:#a855f7"></span>In house · Listed</span><span class="chipfilter " onclick="toggleFilter(&#39;sold&#39;)"><span class="dot" style="background:#22c55e"></span>Sold · Shipped out</span><select class="catselect" onchange="setCatFilter(this.value)"><option value="">All types</option><option>Accessories</option><option>Apple TV</option><option>Cameras</option><option>Console Games</option><option>DS Consoles</option><option>DS Games</option><option>Electronics</option><option>Lenses</option><option>Mac Mini</option><option>Sim Racing</option><option>Wearables</option></select><span class="viewtoggle" style="margin-left:auto"><button class="vbtn " onclick="setView(&#39;list&#39;)">List</button><button class="vbtn on" onclick="setView(&#39;grid&#39;)">Grid</button></span></div>
   </div>
-  <div id="insightsHead" style="display: none;"><div class="stats" id="insightStats">
-    <div class="stat"><div class="n">$1,497</div><div class="l">Gross sales</div></div>
-    <div class="stat"><div class="n pos">$348</div><div class="l">Net profit</div></div>
-    <div class="stat"><div class="n">23%</div><div class="l">Avg margin</div></div>
-    <div class="stat"><div class="n">64</div><div class="l">Items sold</div></div>
-    <div class="stat"><div class="n">53%</div><div class="l">Sell-through</div></div>
-    <div class="stat"><div class="n">12d</div><div class="l">Avg days to sell</div></div>
-    <div class="stat"><div class="n">$12,495</div><div class="l">Total spend</div></div>
-    <div class="stat"><div class="n">120</div><div class="l">Items</div></div>
-    <div class="stat"><div class="n">$11,602</div><div class="l">Inventory at cost</div></div></div></div>
 </header>
 <main>
   <section class="page active" id="page-inv">
@@ -1907,9 +1918,30 @@
     <div id="emptystate" class="empty" style="display:none">No items match your search/filters.</div>
   </section>
 
+  <section class="page" id="page-home">
+    <div class="homenav">
+      <button class="navbtn" onclick="switchPage('inv')"><span class="navico">📦</span><span>Inventory</span></button>
+      <button class="navbtn" onclick="switchPage('insights')"><span class="navico">📊</span><span>Insights</span></button>
+      <button class="navbtn" onclick="switchPage('statements')"><span class="navico">🧾</span><span>Statements</span></button>
+      <button class="navbtn" onclick="switchPage('calc')"><span class="navico">🧮</span><span>Calculator</span></button>
+    </div>
+    <div class="chartgrid" style="margin-top:16px">
+      <div class="card full">
+        <h3>Revenue &amp; profit</h3><div class="sub">All-time snapshot</div>
+        <div class="stats" id="homeStats" style="margin:6px 0 12px"></div>
+        <div class="chartwrap"><canvas id="chartHome"></canvas><div class="nochart" id="homeNC" style="display:none">No sales recorded yet — once you mark items sold, this fills in.</div></div>
+      </div>
+      <div class="card full">
+        <h3>To-do</h3><div class="sub">Items needing attention</div>
+        <div id="homeTodo" class="lb"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="page" id="page-insights">
     <div class="chartgrid">
       <div class="section-h">Sales &amp; profit</div>
+      <div class="stats" id="insightStats" style="grid-column:1/-1;margin-top:0"></div>
       <div class="card full">
         <div class="ctrlrow">
           <div><h3>Revenue &amp; profit over time</h3><div class="sub">Area chart by sale date</div></div>
@@ -1960,7 +1992,7 @@
 
   <section class="page" id="page-statements">
     <div class="chartgrid">
-      <div class="card full">
+      <div class="card">
         <div class="ctrlrow">
           <div><h3>Income statement</h3><div class="sub">Cash basis: all inventory purchased counts as an expense (even unsold), plus selling fees &amp; ledger expenses, against gross sales — for the selected period.</div></div>
           <select class="rangesel" id="stmtRangeSel" onchange="renderIncomeStatement()">
@@ -1971,7 +2003,7 @@
         </div>
         <div id="incomeStmt"></div>
       </div>
-      <div class="card full"><h3>Tax report — Australian financial years (1 Jul – 30 Jun)</h3><div class="sub">Sales &amp; COGS recognised on sale date. Excludes GST. Not tax advice.</div><div id="taxReport"></div></div>
+      <div class="card"><h3>Tax report — Australian financial years (1 Jul – 30 Jun)</h3><div class="sub">Sales &amp; COGS recognised on sale date. Excludes GST. Not tax advice.</div><div id="taxReport"></div></div>
       <div class="card full">
         <h3>Expense ledger</h3><div class="sub">External / overhead expenses — tracked here only, kept out of the Insights charts.</div>
         <div class="expform">
@@ -2011,6 +2043,7 @@
 </main>
 
 <div id="statusmenu" class="menu"></div>
+<div id="filtermenu" class="menu"></div>
 <div id="imgmenu" class="menu" style="left: 545px; top: 617px;"><div class="opt" onclick="triggerImgUpload(&#39;6vbxowz&#39;,&#39;pwnfmo5&#39;)">📷 Upload image</div></div>
 <input type="file" id="imgInput" accept="image/*" style="display:none">
 <datalist id="catlist"><option value="Accessories"></option><option value="Apple TV"></option><option value="Cameras"></option><option value="Console Games"></option><option value="DS Consoles"></option><option value="DS Games"></option><option value="Electronics"></option><option value="Lenses"></option><option value="Mac Mini"></option><option value="Sim Racing"></option><option value="Wearables"></option></datalist>
@@ -2073,15 +2106,26 @@
   <div class="modal sm">
     <h2 id="saleTitle">Sale details</h2>
     <p class="subh" id="saleSub">#5f · Pokemon Platinum Cart AUS</p>
-    <div class="grid2">
-      <div class="field"><label>Where sold (broker)</label><input id="x_broker" list="brokerlist" placeholder="eBay, Facebook, in person…"></div>
-      <div class="field"><label>Sale date</label><input id="x_date" type="date"></div>
-      <div class="field"><label>Raw sale price ($)</label><input id="x_price" type="number" step="0.01" oninput="updateSaleCalc()"></div>
-      <div class="field"><label>Raw sale amount received ($)</label><input id="x_amount" type="number" step="0.01" placeholder="incl. shipping paid by buyer" oninput="updateSaleCalc()"></div>
-      <div class="field"><label>Broker fees ($)</label><input id="x_fees" type="number" step="0.01" oninput="updateSaleCalc()"></div>
-      <div class="field"><label>Shipping costs ($)</label><input id="x_ship" type="number" step="0.01" oninput="updateSaleCalc()"></div>
-      <div class="field"><label>Other costs ($)</label><input id="x_other" type="number" step="0.01" oninput="updateSaleCalc()"></div>
-      <div class="field"><label>Item purchase cost ($)</label><input id="x_cost" type="number" step="0.01" oninput="updateSaleCalc()"></div>
+    <div class="salesec">
+      <div class="seclabel">Sale information — where &amp; when</div>
+      <div class="field"><label>Where sold (broker)</label><div class="brokerpick" id="x_brokerPick"></div><input type="hidden" id="x_broker"></div>
+      <div class="field" style="max-width:220px"><label>Sale date</label><input id="x_date" type="date"></div>
+    </div>
+    <div class="salesec">
+      <div class="seclabel">Money received</div>
+      <div class="grid2">
+        <div class="field"><label>Sale price ($)</label><input id="x_price" type="number" step="0.01" oninput="updateSaleCalc()"></div>
+        <div class="field"><label>Total received ($)</label><input id="x_amount" type="number" step="0.01" placeholder="incl. shipping buyer paid" oninput="updateSaleCalc()"></div>
+      </div>
+    </div>
+    <div class="salesec">
+      <div class="seclabel">Fees &amp; costs</div>
+      <div class="grid2">
+        <div class="field"><label>Broker fees ($)</label><input id="x_fees" type="number" step="0.01" oninput="updateSaleCalc()"></div>
+        <div class="field"><label>Shipping cost ($)</label><input id="x_ship" type="number" step="0.01" oninput="updateSaleCalc()"></div>
+        <div class="field"><label>Other costs ($)</label><input id="x_other" type="number" step="0.01" oninput="updateSaleCalc()"></div>
+        <div class="field"><label>Item purchase cost ($)</label><input id="x_cost" type="number" step="0.01" oninput="updateSaleCalc()"></div>
+      </div>
     </div>
     <div id="saleCalc" style="margin-top:12px">
     <div class="calcline"><span>Gross received</span><span>$194.81</span></div>
@@ -2113,7 +2157,7 @@ const EMBEDDED_DATA={"transactions":[{"id":"isopmws","txnNumber":"1","date":"202
 const KEY='inventoryTagger.v4';
 let state={transactions:[],expenses:[]};
 let sortKey='ref', sortDir='asc';
-let filterStatuses=new Set(), filterCat='', search='';
+let filterStatuses=new Set(), filterCats=new Set(), filterPeriod='all', search='';
 let editingId=null, page='inv', period='week', viewMode='list', lineRange='all';
 let charts={}, saleRef=null, pendingImg=null;
 
@@ -2285,14 +2329,34 @@ function renderStats(){
     <div class="stat"><div class="n">${money0(totalSpend)}</div><div class="l">Total spend</div></div>
     `+STATUSES.map(s=>`<div class="stat"><div class="n" style="color:${s.raw}">${counts[s.id]||0}</div><div class="l">${s.label}</div></div>`).join('');
 }
+const PERIOD_LABELS={all:'All time',day:'Last day',week:'Last week',month:'Last month','3m':'Last 3 months','6m':'Last 6 months',year:'Last year',fy:'Financial year'};
 function renderFilters(){
-  const cats=allTypes();
-  document.getElementById('statusfilters').innerHTML='<span class="hint" style="margin-right:4px">Filter:</span>'+
-    STATUSES.map(s=>`<span class="chipfilter ${filterStatuses.has(s.id)?'active':''}" onclick="toggleFilter('${s.id}')"><span class="dot" style="background:${s.raw}"></span>${s.label}</span>`).join('')+
-    `<select class="catselect" onchange="setCatFilter(this.value)"><option value="">All types</option>${cats.map(c=>`<option ${filterCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>`+
-    ((filterStatuses.size||filterCat)?`<span class="chipfilter" onclick="clearFilters()">✕ clear</span>`:'')+
+  const sLbl=filterStatuses.size?`Status · ${filterStatuses.size}`:'Status';
+  const tLbl=filterCats.size?`Type · ${filterCats.size}`:'Type';
+  const pLbl=filterPeriod==='all'?'Period':PERIOD_LABELS[filterPeriod];
+  const any=filterStatuses.size||filterCats.size||filterPeriod!=='all';
+  document.getElementById('statusfilters').innerHTML=
+    `<button class="fbtn ${filterStatuses.size?'on':''}" onclick="openFilterMenu(event,'status')">${sLbl}</button>`+
+    `<button class="fbtn ${filterCats.size?'on':''}" onclick="openFilterMenu(event,'type')">${tLbl}</button>`+
+    `<button class="fbtn ${filterPeriod!=='all'?'on':''}" onclick="openFilterMenu(event,'period')">${esc(pLbl)}</button>`+
+    (any?`<button class="fbtn clear" onclick="clearFilters()">✕ clear</button>`:'')+
     `<span class="viewtoggle" style="margin-left:auto"><button class="vbtn ${viewMode==='list'?'on':''}" onclick="setView('list')">List</button><button class="vbtn ${viewMode==='grid'?'on':''}" onclick="setView('grid')">Grid</button></span>`;
 }
+function buildFilterMenu(kind){
+  if(kind==='status')return STATUSES.map(s=>`<div class="opt" onclick="toggleFilter('${s.id}')"><span class="dot" style="background:${s.raw}"></span>${s.label}<span style="margin-left:auto;color:var(--accent)">${filterStatuses.has(s.id)?'✓':''}</span></div>`).join('');
+  if(kind==='type'){const c=allTypes();return c.length?c.map(t=>`<div class="opt" onclick="toggleCat('${esc(t)}')">${esc(t)}<span style="margin-left:auto;color:var(--accent)">${filterCats.has(t)?'✓':''}</span></div>`).join(''):'<div class="opt">No types yet</div>';}
+  return Object.entries(PERIOD_LABELS).map(([k,l])=>`<div class="opt" onclick="setPeriodFilter('${k}')">${l}<span style="margin-left:auto;color:var(--accent)">${filterPeriod===k?'✓':''}</span></div>`).join('');
+}
+let _filterKind=null;
+function openFilterMenu(e,kind){
+  e.stopPropagation();_filterKind=kind;
+  const m=document.getElementById('filtermenu');m.innerHTML=buildFilterMenu(kind);
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.left=Math.min(r.left,window.innerWidth-250)+'px';m.style.top=(r.bottom+6)+'px';m.classList.add('show');
+}
+function refreshFilterMenu(){if(_filterKind){const m=document.getElementById('filtermenu');if(m.classList.contains('show'))m.innerHTML=buildFilterMenu(_filterKind);}}
+function closeFilterMenu(){document.getElementById('filtermenu').classList.remove('show');_filterKind=null;}
+function afterFilterChange(){renderFilters();renderTable();refreshFilterMenu();}
 function renderHead(){
   document.getElementById('headrow').innerHTML=COLS.map(c=>{
     if(c.nosort)return `<th>${c.label}</th>`;
@@ -2317,7 +2381,8 @@ function compare(a,b){
 function visibleRows(){
   let rows=flatItems();
   if(filterStatuses.size)rows=rows.filter(r=>filterStatuses.has(r.it.status));
-  if(filterCat)rows=rows.filter(r=>(r.it.tags||[]).includes(filterCat));
+  if(filterCats.size)rows=rows.filter(r=>(r.it.tags||[]).some(tg=>filterCats.has(tg)));
+  if(filterPeriod!=='all'){const b=rangeBounds(filterPeriod);rows=rows.filter(r=>inRange(r.t.date,b));}
   rows=rows.filter(r=>matchSearch(r.t,r.it));rows.sort(compare);return rows;
 }
 function plCellHtml(t,it){
@@ -2553,14 +2618,54 @@ function renderStatements(){
 /* ---------------- page switching ---------------- */
 function switchPage(p){
   page=p;
-  ['inv','insights','statements','calc'].forEach(x=>{
+  ['home','inv','insights','statements','calc'].forEach(x=>{
     document.getElementById('tab-'+x).classList.toggle('active',x===p);
     document.getElementById('page-'+x).classList.toggle('active',x===p);
   });
   document.getElementById('invHead').style.display=p==='inv'?'':'none';
-  document.getElementById('insightsHead').style.display=p==='insights'?'':'none';
-  document.getElementById('addBtn').style.display=p==='inv'?'':'none';
-  if(p==='insights')renderInsights();else if(p==='statements')renderStatements();else if(p==='calc')renderCalc();else renderInv();
+  if(p==='home')renderHome();else if(p==='insights')renderInsights();else if(p==='statements')renderStatements();else if(p==='calc')renderCalc();else renderInv();
+}
+/* ===================== HOME ===================== */
+let homeChart=null;
+function renderHome(){
+  const S=soldStats();let total=0;state.transactions.forEach(t=>total+=Number(t.price)||0);
+  document.getElementById('homeStats').innerHTML=`
+    <div class="stat"><div class="n">${money0(S.rev)}</div><div class="l">Gross sales</div></div>
+    <div class="stat"><div class="n ${S.profit>=0?'pos':'neg'}">${money0(S.profit)}</div><div class="l">Net profit</div></div>
+    <div class="stat"><div class="n">${S.margin.toFixed(0)}%</div><div class="l">Avg margin</div></div>
+    <div class="stat"><div class="n">${S.n}</div><div class="l">Items sold</div></div>
+    <div class="stat"><div class="n">${money0(total)}</div><div class="l">Total spend</div></div>`;
+  renderTodo();
+  requestAnimationFrame(renderHomeChart);
+}
+function renderTodo(){
+  const todos=[];
+  flatItems().forEach(({t,it})=>{
+    if(it.status==='sold'&&hasSaleData(it)&&!(it.sale&&num(it.sale.shipping)>0))todos.push({t,it,msg:'Add the shipping cost you paid'});
+    else if(it.status==='sold'&&!hasSaleData(it))todos.push({t,it,msg:'Add sale details (price & fees)'});
+  });
+  const inc=flatItems().filter(({it})=>it.status==='incoming').length;
+  let h='';
+  if(!todos.length&&!inc){h='<div class="hint" style="padding:16px">All caught up — nothing needs attention 🎉</div>';}
+  else{
+    h+=todos.map(({t,it,msg})=>`<div class="lbrow" style="cursor:pointer" onclick="openSale('${t.id}','${it.id}')"><span class="lbrank" style="background:#f59e0b22;color:#f6c065">!</span><span class="lbimg">${it.img?`<img src="${it.img}">`:`<span class="lbph">${esc((it.label||'?').toUpperCase())}</span>`}</span><span class="lbname"><b>${esc(it.name)}</b><span class="hint">#${itemRef(t,it)} · ${esc(msg)}</span></span><span class="lbval" style="color:var(--accent)">Fix ›</span></div>`).join('');
+    if(inc)h+=`<div class="lbrow" style="cursor:pointer" onclick="filterToIncoming()"><span class="lbrank" style="background:#eab30822;color:#eab308">${inc}</span><span class="lbname"><b>Incoming items</b><span class="hint">paid, shipping to you — not received yet</span></span><span class="lbval" style="color:var(--accent)">View ›</span></div>`;
+  }
+  document.getElementById('homeTodo').innerHTML=h;
+}
+function filterToIncoming(){filterStatuses=new Set(['incoming']);filterCats=new Set();filterPeriod='all';switchPage('inv');}
+function renderHomeChart(){
+  if(typeof Chart==='undefined')return;
+  const sold=flatItems().filter(r=>hasSaleData(r.it));
+  const nc=document.getElementById('homeNC');if(nc)nc.style.display=sold.length?'none':'flex';
+  const rev={},prof={};
+  sold.forEach(({t,it})=>{const k=periodKey(it.sale.date||t.date,'month');rev[k]=(rev[k]||0)+saleGross(it);prof[k]=(prof[k]||0)+saleProfit(t,it);});
+  const keys=Object.keys(rev).sort();
+  if(homeChart){try{homeChart.destroy();}catch(e){}}
+  homeChart=new Chart(document.getElementById('chartHome'),{type:'line',data:{labels:keys.map(k=>periodLabel(k,'month')),datasets:[
+    {label:'Revenue',data:keys.map(k=>rev[k]),borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.18)',fill:true,tension:.3,pointRadius:3},
+    {label:'Net profit',data:keys.map(k=>prof[k]),borderColor:'#4f9cff',backgroundColor:'rgba(79,156,255,.16)',fill:true,tension:.3,pointRadius:3}
+  ]},options:optLine()});
 }
 
 /* ===================== CALCULATOR ===================== */
@@ -2603,12 +2708,14 @@ function computeCalc(){
   const tprice=td>0?(fixed+totalCost+shipc*(tm-(1-fvf)))/td:null;
   const sub=document.getElementById('c_costsub');
   if(sub)sub.innerHTML=(tprice&&tprice>0&&cost>0)?`List at ~<b style="color:var(--txt)">${money(tprice)}</b> for a ${num(v('c_targetmargin'))}% margin (after fees &amp; postage)`:'Enter a cost to see the suggested list price.';
+  const marginCol=margin<10?'#ef4444':(margin<25?'#eab308':'#22c55e');
+  const roiCol=roi<20?'#ef4444':(roi<50?'#eab308':'#22c55e');
   document.getElementById('calcResults').innerHTML=`
     <div class="kpi">Net profit</div>
     <div class="bigprofit ${profit>=0?'pos':'neg'}">${money(profit)}</div>
     <div class="calcsub">
-      <div class="kpi">Margin<b>${margin.toFixed(1)}%</b></div>
-      <div class="kpi">ROI<b>${cost>0?roi.toFixed(0)+'%':'—'}</b></div>
+      <div class="kpi">Margin<b style="color:${marginCol}">${margin.toFixed(1)}%</b></div>
+      <div class="kpi">ROI<b style="color:${cost>0?roiCol:'var(--muted)'}">${cost>0?roi.toFixed(0)+'%':'—'}</b></div>
     </div>
     <div style="margin-top:16px">
       <div class="calcline"><span>Gross received (sale + shipping)</span><span>${money(gross)}</span></div>
@@ -2627,9 +2734,10 @@ function renderAll(){if(page==='inv')renderInv();else if(page==='insights')rende
 
 /* ---------------- interactions ---------------- */
 function setSort(k){if(sortKey===k){sortDir=sortDir==='asc'?'desc':'asc';}else{sortKey=k;sortDir='asc';}renderInv();}
-function toggleFilter(id){filterStatuses.has(id)?filterStatuses.delete(id):filterStatuses.add(id);renderInv();}
-function setCatFilter(v){filterCat=v;renderInv();}
-function clearFilters(){filterStatuses.clear();filterCat='';renderInv();}
+function toggleFilter(id){filterStatuses.has(id)?filterStatuses.delete(id):filterStatuses.add(id);afterFilterChange();}
+function toggleCat(c){filterCats.has(c)?filterCats.delete(c):filterCats.add(c);afterFilterChange();}
+function setPeriodFilter(p){filterPeriod=p;closeFilterMenu();renderFilters();renderTable();}
+function clearFilters(){filterStatuses.clear();filterCats.clear();filterPeriod='all';closeFilterMenu();renderInv();}
 function setView(v){viewMode=v;renderInv();}
 document.getElementById('search').addEventListener('input',e=>{search=e.target.value;if(page==='inv')renderTable();});
 
@@ -2642,7 +2750,7 @@ function openImgMenu(e,txnId,itemId){
 }
 function triggerImgUpload(txnId,itemId){pendingImg={txnId,itemId};document.getElementById('imgmenu').classList.remove('show');document.getElementById('imgInput').click();}
 function removeImg(txnId,itemId){const t=state.transactions.find(x=>x.id===txnId);const it=t.items.find(x=>x.id===itemId);it.img=null;save();document.getElementById('imgmenu').classList.remove('show');renderInv();}
-function compressImage(file,cb){const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const max=260;const sc=Math.min(1,max/Math.max(img.width,img.height));const w=Math.round(img.width*sc),h=Math.round(img.height*sc);const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);try{cb(c.toDataURL('image/jpeg',0.72));}catch(err){cb(r.result);}};img.onerror=()=>cb(r.result);img.src=r.result;};r.readAsDataURL(file);}
+function compressImage(file,cb){const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const max=560;const sc=Math.min(1,max/Math.max(img.width,img.height));const w=Math.round(img.width*sc),h=Math.round(img.height*sc);const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(img,0,0,w,h);try{cb(c.toDataURL('image/jpeg',0.86));}catch(err){cb(r.result);}};img.onerror=()=>cb(r.result);img.src=r.result;};r.readAsDataURL(file);}
 document.getElementById('imgInput').addEventListener('change',e=>{const f=e.target.files[0];if(f&&pendingImg){const ref=pendingImg;compressImage(f,data=>{const t=state.transactions.find(x=>x.id===ref.txnId);if(!t)return;const it=t.items.find(x=>x.id===ref.itemId);if(!it)return;it.img=data;try{save();}catch(err){alert('Could not save image — storage may be full.');it.img=null;}renderInv();});}e.target.value='';pendingImg=null;});
 
 function openStatusMenu(e,txnId,itemId){
@@ -2651,7 +2759,7 @@ function openStatusMenu(e,txnId,itemId){
   m.style.left=Math.min(e.clientX,window.innerWidth-260)+'px';m.style.top=(e.clientY+8)+'px';m.classList.add('show');
 }
 function setStatus(txnId,itemId,st){const t=state.transactions.find(x=>x.id===txnId);if(!t)return;const it=t.items.find(x=>x.id===itemId);if(!it)return;it.status=st;save();renderInv();document.getElementById('statusmenu').classList.remove('show');}
-document.addEventListener('click',()=>{document.getElementById('statusmenu').classList.remove('show');document.getElementById('imgmenu').classList.remove('show');});
+document.addEventListener('click',()=>{document.getElementById('statusmenu').classList.remove('show');document.getElementById('imgmenu').classList.remove('show');closeFilterMenu();});
 
 /* ---------------- sale modal ---------------- */
 function openSale(txnId,itemId){
@@ -2659,7 +2767,7 @@ function openSale(txnId,itemId){
   saleRef={t,it};refreshLists();const sale=it.sale||{};
   document.getElementById('saleTitle').textContent=it.status==='sold'?'Sale details':'Mark as sold';
   document.getElementById('saleSub').textContent=`#${itemRef(t,it)} · ${it.name}`;
-  document.getElementById('x_broker').value=sale.broker||'';
+  renderBrokerPick(sale.broker||'');
   document.getElementById('x_date').value=sale.date||new Date().toISOString().slice(0,10);
   document.getElementById('x_price').value=sale.salePrice??'';
   document.getElementById('x_amount').value=sale.saleAmount??'';
@@ -2672,6 +2780,16 @@ function openSale(txnId,itemId){
 }
 function closeSale(){document.getElementById('saleOverlay').classList.remove('show');saleRef=null;}
 document.getElementById('saleOverlay').addEventListener('click',e=>{if(e.target.id==='saleOverlay')closeSale();});
+const BROKER_DEFAULTS=['eBay','Facebook','Gumtree','In person'];
+let _brokerOpts=[];
+function renderBrokerPick(sel){
+  const wrap=document.getElementById('x_brokerPick');if(!wrap)return;
+  _brokerOpts=[];[...BROKER_DEFAULTS,...allBrokers(),sel].forEach(b=>{if(b&&!_brokerOpts.some(x=>x.toLowerCase()===b.toLowerCase()))_brokerOpts.push(b);});
+  document.getElementById('x_broker').value=sel||'';
+  wrap.innerHTML=_brokerOpts.map((b,i)=>`<span class="bchip ${(sel||'').toLowerCase()===b.toLowerCase()?'on':''}" onclick="setBroker(${i})">${esc(b)}</span>`).join('')+`<span class="bchip add" onclick="addBroker()">+ add</span>`;
+}
+function setBroker(i){renderBrokerPick(_brokerOpts[i]);}
+function addBroker(){const n=prompt('Where was it sold? (broker name)');if(n&&n.trim())renderBrokerPick(n.trim());}
 function readSale(){return{broker:document.getElementById('x_broker').value.trim(),date:document.getElementById('x_date').value,salePrice:num(document.getElementById('x_price').value),saleAmount:num(document.getElementById('x_amount').value),fees:num(document.getElementById('x_fees').value),shipping:num(document.getElementById('x_ship').value),other:num(document.getElementById('x_other').value)};}
 function updateSaleCalc(){
   const s=readSale();const cost=num(document.getElementById('x_cost').value);
@@ -2792,24 +2910,27 @@ function showLogin(msg){
   if(!o){
     o=document.createElement('div');o.id='loginOverlay';
     o.style.cssText='position:fixed;inset:0;z-index:300;background:#0f1115;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif';
-    o.innerHTML='<div style="background:#171a21;border:1px solid #2a2f3a;border-radius:16px;padding:30px;width:330px;text-align:center"><div style="width:34px;height:34px;border-radius:9px;margin:0 auto 12px;background:linear-gradient(135deg,#4f9cff,#8b5cf6)"></div><div style="font-size:19px;font-weight:700;color:#e6e9ef">Inventory Tagger</div><div id="loginMsg" style="color:#9aa3b2;font-size:13px;margin:6px 0 18px">Enter your password</div><input id="loginPw" type="password" autocomplete="current-password" placeholder="Password" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid #2a2f3a;background:#1e222b;color:#e6e9ef;outline:none;margin-bottom:12px;font-size:15px"><button id="loginBtn" style="width:100%;padding:11px;border-radius:9px;border:none;background:#3a7be0;color:#fff;font-weight:600;font-size:15px;cursor:pointer">Log in</button></div>';
+    o.innerHTML='<div style="background:#171a21;border:1px solid #2a2f3a;border-radius:16px;padding:32px 28px;width:300px;text-align:center"><div style="width:38px;height:38px;border-radius:10px;margin:0 auto 12px;background:linear-gradient(135deg,#4f9cff,#8b5cf6)"></div><div style="font-size:21px;font-weight:700;color:#e6e9ef">Williams</div><div id="loginMsg" style="color:#9aa3b2;font-size:13px;margin:6px 0 18px">Enter your 5-digit code</div><input id="loginPw" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="•••••" style="width:100%;padding:14px;border-radius:12px;border:1px solid #2a2f3a;background:#1e222b;color:#e6e9ef;outline:none;font-size:30px;letter-spacing:14px;text-align:center;caret-color:#4f9cff"></div>';
     document.body.appendChild(o);
-    o.querySelector('#loginBtn').onclick=doLogin;
-    o.querySelector('#loginPw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+    const inp=o.querySelector('#loginPw');
+    inp.addEventListener('input',()=>{inp.value=inp.value.replace(/\D/g,'').slice(0,5);if(inp.value.length===5)doLogin();});
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
   }
   o.style.display='flex';
   if(msg)o.querySelector('#loginMsg').textContent=msg;
   setTimeout(()=>{const p=document.getElementById('loginPw');if(p)p.focus();},50);
 }
 function hideLogin(){const o=document.getElementById('loginOverlay');if(o)o.style.display='none';}
+let _loggingIn=false;
 async function doLogin(){
-  const pw=(document.getElementById('loginPw')||{}).value||'';
+  if(_loggingIn)return;_loggingIn=true;
+  const pwEl=document.getElementById('loginPw');const pw=(pwEl||{}).value||'';
   const msg=document.getElementById('loginMsg');
   try{
     const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
-    if(!r.ok){if(msg)msg.textContent='Wrong password — try again.';return;}
-    const j=await r.json();AUTH=j.token;localStorage.setItem('it_token',AUTH);hideLogin();await bootHosted();
-  }catch(e){if(msg)msg.textContent='Could not reach the server.';}
+    if(!r.ok){if(msg)msg.textContent='Wrong code — try again.';if(pwEl){pwEl.value='';pwEl.focus();}_loggingIn=false;return;}
+    const j=await r.json();AUTH=j.token;localStorage.setItem('it_token',AUTH);hideLogin();_loggingIn=false;await bootHosted();
+  }catch(e){if(msg)msg.textContent='Could not reach the server.';_loggingIn=false;}
 }
 function logout(){AUTH='';localStorage.removeItem('it_token');showLogin('Logged out.');}
 async function bootHosted(){
@@ -2825,7 +2946,7 @@ async function bootHosted(){
   migrate();
   try{localStorage.setItem(KEY,JSON.stringify(state));}catch(_){}
   if(!fromServer&&AUTH)serverSave();   // seed the cloud on first run
-  renderInv();
+  switchPage('home');
 }
 bootHosted();
 </script>
