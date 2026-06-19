@@ -202,20 +202,26 @@ function applyEbayOrders(state, orders, feeByOrder) {
     const orderTotal = Number((o.pricingSummary && o.pricingSummary.total && o.pricingSummary.total.value) || 0);
     const f = feeByOrder[o.orderId] || { broker: 0, shipping: 0 };
     (o.lineItems || []).forEach(li => {
-      const price = Number((li.total && li.total.value) || (li.lineItemCost && li.lineItemCost.value) || 0);
-      const share = orderTotal > 0 ? (price / orderTotal) : 1;
-      const broker = Math.round(f.broker * share * 100) / 100;
-      const shipping = Math.round(f.shipping * share * 100) / 100;
+      // multi-quantity listing: one listing holds several copies, refs comma-separated left-to-right.
+      // each UNIT sold consumes the next ref in order.
+      const qty = Math.max(1, Number(li.quantity || 1));
+      const lineTotal = Number((li.total && li.total.value) || (li.lineItemCost && li.lineItemCost.value) || 0);
+      const unitPrice = Math.round((lineTotal / qty) * 100) / 100;
+      const lineShare = orderTotal > 0 ? (lineTotal / orderTotal) : 1;
+      const unitBroker = Math.round((f.broker * lineShare / qty) * 100) / 100;
+      const unitShipping = Math.round((f.shipping * lineShare / qty) * 100) / 100;
       const skus = String(li.sku || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      const setSale = (it) => { it.status = 'sold'; it.sale = { broker: 'eBay', date, salePrice: price, saleAmount: price, fees: broker, shipping: shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: o.orderId }; };
-      let done = false;
-      // 1) refresh an already-synced eBay item for this order (keeps fees current incl. ad fees billed later)
+      const setSale = (it) => { it.status = 'sold'; it.sale = { broker: 'eBay', date, salePrice: unitPrice, saleAmount: unitPrice, fees: unitBroker, shipping: unitShipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: o.orderId }; };
       const ex = ebayByOrder[o.orderId] || [];
-      for (const sku of skus) { const e = ex.find(x => x.ref === sku && !x.used); if (e) { e.used = true; setSale(e.it); updated++; done = true; break; } }
-      if (done) return;
-      // 2) otherwise match an unsold inventory item by SKU (earliest unsold wins)
-      for (const sku of skus) { const list = unsoldByRef[sku]; if (list && list.length) { setSale(list.shift()); matched++; done = true; break; } }
-      if (!done) unmatched++;
+      let units = qty, did = 0;
+      for (const sku of skus) {
+        if (units <= 0) break;
+        const e = ex.find(x => x.ref === sku && !x.used);          // refresh an already-synced unit for this order
+        if (e) { e.used = true; setSale(e.it); updated++; units--; did++; continue; }
+        const list = unsoldByRef[sku];                              // else newly mark the next unsold ref sold
+        if (list && list.length) { setSale(list.shift()); matched++; units--; did++; continue; }
+      }
+      if (did === 0) unmatched++;
     });
   });
   return { orders: orders.length, matched, updated, unmatched, skippedUnpaid };
