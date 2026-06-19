@@ -90,7 +90,7 @@ const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET || '';
 const EBAY_RUNAME = process.env.EBAY_RUNAME || '';
 const EBAY_VERIFICATION_TOKEN = process.env.EBAY_VERIFICATION_TOKEN || '';
 const APP_URL = (process.env.APP_URL || 'https://williams.up.railway.app').replace(/\/$/, '');
-const EBAY_SCOPES = 'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly https://api.ebay.com/oauth/api_scope/sell.finances.readonly';
+const EBAY_SCOPES = 'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly https://api.ebay.com/oauth/api_scope/sell.finances';
 let memTok = null;
 
 async function ebayLoadTok() {
