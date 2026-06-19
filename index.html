@@ -1976,6 +1976,13 @@
 
   <section class="page active" id="page-home">
     <div class="chartgrid">
+      <div class="card full" id="ebayCard">
+        <div class="ctrlrow">
+          <div><h3>eBay sync</h3><div class="sub" id="ebaySub">Checking eBay connection…</div></div>
+          <div id="ebayBtns" style="display:flex;gap:8px"></div>
+        </div>
+        <div id="ebayMsg" class="hint" style="margin-top:8px"></div>
+      </div>
       <div class="card full">
         <h3>Revenue &amp; profit</h3><div class="sub">All-time snapshot</div>
         <div class="stats" id="homeStats" style="margin:6px 0 12px"></div>
@@ -2723,7 +2730,37 @@ function renderHome(){
     <div class="stat"><div class="n">${S.n}</div><div class="l">Items sold</div></div>
     <div class="stat"><div class="n">${money0(total)}</div><div class="l">Total spend</div></div>`;
   renderTodo();
+  ebayRefresh();
   requestAnimationFrame(renderHomeChart);
+}
+async function ebayRefresh(){
+  const sub=document.getElementById('ebaySub'),btns=document.getElementById('ebayBtns');if(!sub)return;
+  try{
+    const r=await api('GET','/api/ebay/status');const j=await r.json();
+    if(j.connected){sub.innerHTML='<span class="pos">● Connected</span> — pull your latest sold orders &amp; fees.';btns.innerHTML='<button class="primary" onclick="ebaySync()">Sync now</button><button class="ghost" onclick="ebayDisconnect()">Disconnect</button>';}
+    else if(j.configured){sub.textContent='Link your eBay account to auto-import sold orders & fees.';btns.innerHTML='<button class="primary" onclick="ebayConnect()">Connect eBay</button>';}
+    else{sub.textContent='Add your eBay API keys in Railway (App ID, Cert ID, RuName) to enable this.';btns.innerHTML='';}
+  }catch(e){sub.textContent='Could not check eBay status.';btns.innerHTML='';}
+}
+async function ebayConnect(){try{const r=await api('GET','/api/ebay/connect');const j=await r.json();if(j.url)window.location.href=j.url;else document.getElementById('ebayMsg').textContent=j.error||'Could not start eBay connect.';}catch(e){}}
+async function ebayDisconnect(){try{await api('POST','/api/ebay/disconnect');ebayRefresh();}catch(e){}}
+async function ebaySync(){
+  const msg=document.getElementById('ebayMsg');msg.textContent='Syncing with eBay…';
+  try{
+    const r=await api('POST','/api/ebay/sync');const j=await r.json();
+    if(j.error){msg.innerHTML='<span class="neg">Sync error: '+esc(j.error)+'</span>';return;}
+    // reload fresh data from server
+    const sr=await api('GET','/api/state');const sj=await sr.json();
+    if(sj&&sj.data&&Array.isArray(sj.data.transactions)){state=sj.data;migrate();try{localStorage.setItem(KEY,JSON.stringify(state));}catch(_){}}
+    msg.innerHTML=`<span class="pos">Synced ${j.matched} item${j.matched===1?'':'s'} as sold</span> from ${j.orders} eBay orders${j.unmatched?` · ${j.unmatched} line(s) had no matching SKU`:''}.`;
+    renderHome();
+  }catch(e){msg.innerHTML='<span class="neg">Sync failed.</span>';}
+}
+function handleEbayReturn(){
+  const p=new URLSearchParams(location.search).get('ebay');if(!p)return;
+  const m={connected:'eBay connected ✓',declined:'eBay connection was declined.',error:'eBay connection failed — check your keys/RuName.'};
+  setTimeout(()=>{const el=document.getElementById('ebayMsg');if(el)el.textContent=m[p]||'';},400);
+  history.replaceState({},'',location.pathname);
 }
 function renderTodo(){
   const todos=[];
@@ -3046,6 +3083,7 @@ async function bootHosted(){
 }
 applyTheme(localStorage.getItem('it_theme')||'dark');
 bootHosted();
+handleEbayReturn();
 </script>
 
 

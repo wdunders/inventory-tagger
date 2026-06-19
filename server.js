@@ -28,6 +28,7 @@ async function initDB() {
       ssl: { rejectUnauthorized: false }
     });
     await pool.query('CREATE TABLE IF NOT EXISTS app_state (id INT PRIMARY KEY, data JSONB, updated_at TIMESTAMPTZ DEFAULT now())');
+    await pool.query('CREATE TABLE IF NOT EXISTS ebay_tokens (id INT PRIMARY KEY, refresh_token TEXT, access_token TEXT, expires_at BIGINT)');
     console.log('Postgres connected.');
   } else {
     console.warn('!! No DATABASE_URL set — using in-memory store. Data will NOT survive a restart. (Fine for local testing.)');
@@ -81,6 +82,177 @@ app.put('/api/state', auth, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'save failed' });
   }
+});
+
+/* ===================== eBay integration (Phase 2) ===================== */
+const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID || '';
+const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET || '';
+const EBAY_RUNAME = process.env.EBAY_RUNAME || '';
+const EBAY_VERIFICATION_TOKEN = process.env.EBAY_VERIFICATION_TOKEN || '';
+const APP_URL = (process.env.APP_URL || 'https://williams.up.railway.app').replace(/\/$/, '');
+const EBAY_SCOPES = 'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly https://api.ebay.com/oauth/api_scope/sell.finances.readonly';
+let memTok = null;
+
+async function ebayLoadTok() {
+  if (pool) { const r = await pool.query('SELECT refresh_token, access_token, expires_at FROM ebay_tokens WHERE id=1'); return r.rows[0] || null; }
+  return memTok;
+}
+async function ebaySaveTok(t) {
+  if (pool) { await pool.query('INSERT INTO ebay_tokens(id,refresh_token,access_token,expires_at) VALUES(1,$1,$2,$3) ON CONFLICT(id) DO UPDATE SET refresh_token=$1,access_token=$2,expires_at=$3', [t.refresh_token, t.access_token, t.expires_at]); }
+  else memTok = t;
+}
+async function loadStateInternal() {
+  if (pool) { const r = await pool.query('SELECT data FROM app_state WHERE id=1'); return r.rows[0] ? r.rows[0].data : null; }
+  return mem;
+}
+async function saveStateInternal(d) {
+  if (pool) { await pool.query('INSERT INTO app_state(id,data,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET data=$1,updated_at=now()', [d]); }
+  else mem = d;
+}
+function ebayBasicAuth() { return 'Basic ' + Buffer.from(EBAY_CLIENT_ID + ':' + EBAY_CLIENT_SECRET).toString('base64'); }
+async function ebayTokenRequest(params) {
+  const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: ebayBasicAuth() },
+    body: new URLSearchParams(params).toString()
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error('eBay token error: ' + (j.error_description || j.error || r.status));
+  return j;
+}
+async function ebayAccessToken() {
+  const t = await ebayLoadTok();
+  if (!t || !t.refresh_token) return null;
+  if (t.access_token && t.expires_at && Date.now() < Number(t.expires_at) - 60000) return t.access_token;
+  const j = await ebayTokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh_token, scope: EBAY_SCOPES });
+  const nt = { refresh_token: t.refresh_token, access_token: j.access_token, expires_at: Date.now() + (j.expires_in * 1000) };
+  await ebaySaveTok(nt);
+  return nt.access_token;
+}
+async function ebayGet(url, at) {
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + at, 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_AU', 'Content-Type': 'application/json' } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error('eBay API ' + r.status + ': ' + JSON.stringify(j).slice(0, 300));
+  return j;
+}
+
+// Marketplace account-deletion notification endpoint (required to enable the Production keyset)
+app.get('/api/ebay/deletion', (req, res) => {
+  const challenge = req.query.challenge_code;
+  if (!challenge) return res.status(400).json({ error: 'missing challenge_code' });
+  const endpoint = APP_URL + '/api/ebay/deletion';
+  const h = crypto.createHash('sha256');
+  h.update(challenge); h.update(EBAY_VERIFICATION_TOKEN); h.update(endpoint);
+  res.status(200).json({ challengeResponse: h.digest('hex') });
+});
+app.post('/api/ebay/deletion', (req, res) => res.status(200).send()); // we don't store other users' data; just acknowledge
+
+// connection status
+app.get('/api/ebay/status', auth, async (req, res) => {
+  let connected = false;
+  try { const t = await ebayLoadTok(); connected = !!(t && t.refresh_token); } catch (e) {}
+  res.json({ connected, configured: !!(EBAY_CLIENT_ID && EBAY_RUNAME) });
+});
+
+// start OAuth — returns the eBay consent URL for the browser to open
+app.get('/api/ebay/connect', auth, (req, res) => {
+  if (!EBAY_CLIENT_ID || !EBAY_RUNAME) return res.status(400).json({ error: 'eBay keys not configured yet' });
+  const state = crypto.randomBytes(8).toString('hex');
+  const url = 'https://auth.ebay.com/oauth2/authorize?' + new URLSearchParams({
+    client_id: EBAY_CLIENT_ID, response_type: 'code', redirect_uri: EBAY_RUNAME, scope: EBAY_SCOPES, state
+  }).toString();
+  res.json({ url });
+});
+
+// OAuth callback — eBay redirects the user here after consent
+app.get('/api/ebay/callback', async (req, res) => {
+  const code = req.query.code;
+  if (!code) return res.redirect('/?ebay=declined');
+  try {
+    const j = await ebayTokenRequest({ grant_type: 'authorization_code', code, redirect_uri: EBAY_RUNAME });
+    await ebaySaveTok({ refresh_token: j.refresh_token, access_token: j.access_token, expires_at: Date.now() + (j.expires_in * 1000) });
+    res.redirect('/?ebay=connected');
+  } catch (e) { console.error('eBay callback:', e.message); res.redirect('/?ebay=error'); }
+});
+
+app.post('/api/ebay/disconnect', auth, async (req, res) => {
+  if (pool) await pool.query('DELETE FROM ebay_tokens WHERE id=1'); else memTok = null;
+  res.json({ ok: true });
+});
+
+// match an eBay order's line items to inventory by SKU (earliest unsold wins for multi-SKU listings)
+function applyEbayOrders(state, orders, feeByOrder) {
+  const byRef = {};
+  state.transactions.forEach(t => t.items.forEach(it => {
+    if (it.status !== 'sold') { const ref = String(t.txnNumber) + String(it.label || '').toLowerCase(); (byRef[ref] = byRef[ref] || []).push(it); }
+  }));
+  let matched = 0, unmatched = 0;
+  orders.forEach(o => {
+    const date = (o.creationDate || '').slice(0, 10);
+    const orderTotal = Number((o.pricingSummary && o.pricingSummary.total && o.pricingSummary.total.value) || 0);
+    const orderFee = Number(feeByOrder[o.orderId] || 0);
+    (o.lineItems || []).forEach(li => {
+      const price = Number((li.total && li.total.value) || (li.lineItemCost && li.lineItemCost.value) || 0);
+      const fee = orderTotal > 0 ? orderFee * (price / orderTotal) : 0;
+      const skus = String(li.sku || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      let assigned = false;
+      for (const sku of skus) {
+        const list = byRef[sku];
+        if (list && list.length) {
+          const it = list.shift();
+          it.status = 'sold';
+          it.sale = { broker: 'eBay', date, salePrice: price, saleAmount: price, fees: Math.round(fee * 100) / 100, shipping: (it.sale && it.sale.shipping) || 0, other: 0, ebayOrderId: o.orderId };
+          matched++; assigned = true; break;
+        }
+      }
+      if (!assigned) unmatched++;
+    });
+  });
+  return { orders: orders.length, matched, unmatched };
+}
+
+// pull sold orders + fees, match by SKU, save
+app.post('/api/ebay/sync', auth, async (req, res) => {
+  try {
+    const at = await ebayAccessToken();
+    if (!at) return res.status(400).json({ error: 'eBay not connected' });
+    let orders = [], offset = 0;
+    for (let p = 0; p < 15; p++) {
+      const j = await ebayGet('https://api.ebay.com/sell/fulfillment/v1/order?limit=200&offset=' + offset, at);
+      const batch = j.orders || [];
+      orders = orders.concat(batch);
+      if (batch.length < 200) break; offset += batch.length;
+    }
+    let txns = [], fo = 0;
+    for (let p = 0; p < 15; p++) {
+      let j; try { j = await ebayGet('https://apiz.ebay.com/sell/finances/v1/transaction?limit=200&offset=' + fo, at); } catch (e) { console.error('finances:', e.message); break; }
+      const batch = j.transactions || [];
+      txns = txns.concat(batch);
+      if (batch.length < 200) break; fo += batch.length;
+    }
+    const feeByOrder = {};
+    txns.forEach(tx => {
+      let orderId = tx.orderId || null;
+      if (!orderId && Array.isArray(tx.references)) { const r = tx.references.find(x => x.referenceType === 'ORDER_ID'); orderId = r ? r.referenceId : null; }
+      if (!orderId) return;
+      if (tx.transactionType === 'SALE') feeByOrder[orderId] = (feeByOrder[orderId] || 0) + Number((tx.totalFeeAmount && tx.totalFeeAmount.value) || 0);
+    });
+    const state = await loadStateInternal();
+    if (!state || !Array.isArray(state.transactions)) return res.status(400).json({ error: 'no inventory data' });
+    const summary = applyEbayOrders(state, orders, feeByOrder);
+    await saveStateInternal(state);
+    res.json(summary);
+  } catch (e) { console.error('eBay sync:', e); res.status(500).json({ error: e.message }); }
+});
+
+// quick diagnostic
+app.get('/api/ebay/debug', auth, async (req, res) => {
+  try {
+    const at = await ebayAccessToken();
+    if (!at) return res.json({ connected: false });
+    const o = await ebayGet('https://api.ebay.com/sell/fulfillment/v1/order?limit=3', at);
+    res.json({ connected: true, total: o.total, sampleSkus: (o.orders || []).flatMap(x => (x.lineItems || []).map(l => l.sku)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true, db: !!pool }));
