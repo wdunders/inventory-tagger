@@ -36,6 +36,9 @@
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:9px 14px;min-width:102px}
   .stat .n{font-size:20px;font-weight:700}
   .stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .statclick{cursor:pointer;transition:.12s}
+  .statclick:hover{border-color:var(--accent)}
+  .selstat{border-color:#fff;box-shadow:0 0 0 1px #fff inset}
   .filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
   .chipfilter{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px}
   .chipfilter.active{border-color:#fff;color:#fff}
@@ -2075,7 +2078,7 @@
         <div class="expform">
           <div class="field"><label>Date</label><input type="date" id="e_date"></div>
           <div class="field"><label>Description</label><input id="e_desc" placeholder="e.g. bubble mailers" style="min-width:180px"></div>
-          <div class="field"><label>Type</label><input id="e_type" list="exptypes" placeholder="Shipping supplies"></div>
+          <div class="field"><label>Tags (comma-separated)</label><input id="e_type" list="exptypes" placeholder="Shipping supplies, Postage"></div>
           <div class="field"><label>Vendor (opt)</label><input id="e_vendor" placeholder="Officeworks"></div>
           <div class="field"><label>Amount ($)</label><input id="e_amount" type="number" step="0.01" style="width:110px"></div>
           <button class="primary" onclick="addExpense()">Add expense</button>
@@ -2211,10 +2214,10 @@
 <script>
 /* ---------------- config ---------------- */
 const STATUSES = [
-  {id:'incoming', label:'Incoming (shipping to me)', color:'var(--incoming)', raw:'#eab308'},
-  {id:'unlisted', label:'In house · Unlisted',       color:'var(--unlisted)', raw:'#f59e0b'},
-  {id:'listed',   label:'In house · Listed',         color:'var(--listed)',   raw:'#a855f7'},
-  {id:'sold',     label:'Sold · Shipped out',        color:'var(--sold)',     raw:'#22c55e'},
+  {id:'incoming', label:'Incoming', color:'var(--incoming)', raw:'#eab308'},
+  {id:'unlisted', label:'Unlisted', color:'var(--unlisted)', raw:'#f59e0b'},
+  {id:'listed',   label:'Listed',   color:'var(--listed)',   raw:'#a855f7'},
+  {id:'sold',     label:'Sold',     color:'var(--sold)',     raw:'#22c55e'},
 ];
 const STATUS = Object.fromEntries(STATUSES.map(s=>[s.id,s]));
 const PALETTE = ['#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899','#f472b6'];
@@ -2224,7 +2227,7 @@ const EMBEDDED_DATA={"transactions":[{"id":"isopmws","txnNumber":"1","date":"202
 const KEY='inventoryTagger.v4';
 let state={transactions:[],expenses:[]};
 let sortKey='ref', sortDir='asc';
-let filterStatuses=new Set(), filterCats=new Set(), filterPeriod='all', filterCostMin=null, filterCostMax=null, search='';
+let filterStatuses=new Set(), filterCats=new Set(), filterPeriod='all', filterCostMin=null, filterCostMax=null, filterBrokers=new Set(), search='';
 let selectedItems=new Set();
 let editingId=null, page='inv', period='week', viewMode='list', lineRange='all';
 let charts={}, saleRef=null, pendingImg=null;
@@ -2390,13 +2393,16 @@ const COLS=[
   {key:'status',label:'Status'},{key:'cost',label:'Cost'},{key:'pl',label:'P / L',nosort:true},{key:'sold',label:'Sold',nosort:true},{key:'act',label:'',nosort:true},
 ];
 function renderStats(){
-  const counts={incoming:0,unlisted:0,listed:0,sold:0};let totalSpend=0,itemCount=0;
-  state.transactions.forEach(t=>{totalSpend+=Number(t.price)||0;t.items.forEach(it=>{counts[it.status]=(counts[it.status]||0)+1;itemCount++;});});
+  const counts={incoming:0,unlisted:0,listed:0,sold:0};let totalSpend=0,itemCount=0,invValue=0,pending=0;
+  state.transactions.forEach(t=>{totalSpend+=Number(t.price)||0;t.items.forEach(it=>{counts[it.status]=(counts[it.status]||0)+1;itemCount++;
+    if(it.status!=='sold'){invValue+=itemCost(t,it);if(it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));}});});
   document.getElementById('stats').innerHTML=`
     <div class="stat"><div class="n">${state.transactions.length}</div><div class="l">Transactions</div></div>
     <div class="stat"><div class="n">${itemCount}</div><div class="l">Items</div></div>
     <div class="stat"><div class="n">${money0(totalSpend)}</div><div class="l">Total spend</div></div>
-    `+STATUSES.map(s=>`<div class="stat"><div class="n" style="color:${s.raw}">${counts[s.id]||0}</div><div class="l">${s.label}</div></div>`).join('');
+    <div class="stat"><div class="n">${money0(invValue)}</div><div class="l">Inventory value</div></div>
+    <div class="stat"><div class="n ${pending>=0?'pos':'neg'}">${money0(pending)}</div><div class="l">Pending profit</div></div>
+    `+STATUSES.map(s=>`<div class="stat statclick ${filterStatuses.has(s.id)?'selstat':''}" onclick="toggleFilter('${s.id}')" title="Click to filter ${s.label}"><div class="n" style="color:${s.raw}">${counts[s.id]||0}</div><div class="l">${s.label}</div></div>`).join('');
 }
 const PERIOD_LABELS={all:'All time',day:'Last day',week:'Last week',month:'Last month','3m':'Last 3 months','6m':'Last 6 months',year:'Last year',fy:'Financial year'};
 function renderFilters(){
@@ -2405,12 +2411,14 @@ function renderFilters(){
   const pLbl=filterPeriod==='all'?'Period':PERIOD_LABELS[filterPeriod];
   const costOn=filterCostMin!=null||filterCostMax!=null;
   const cLbl=costOn?`Cost · ${filterCostMin!=null?'$'+filterCostMin:'$0'}–${filterCostMax!=null?'$'+filterCostMax:'∞'}`:'Cost';
-  const any=filterStatuses.size||filterCats.size||filterPeriod!=='all'||costOn;
+  const brLbl=filterBrokers.size?`Sold at · ${filterBrokers.size}`:'Sold at';
+  const any=filterStatuses.size||filterCats.size||filterPeriod!=='all'||costOn||filterBrokers.size;
   document.getElementById('statusfilters').innerHTML=
     `<button class="fbtn ${filterStatuses.size?'on':''}" onclick="openFilterMenu(event,'status')">${sLbl}</button>`+
     `<button class="fbtn ${filterCats.size?'on':''}" onclick="openFilterMenu(event,'type')">${tLbl}</button>`+
     `<button class="fbtn ${filterPeriod!=='all'?'on':''}" onclick="openFilterMenu(event,'period')">${esc(pLbl)}</button>`+
     `<button class="fbtn ${costOn?'on':''}" onclick="openFilterMenu(event,'cost')">${esc(cLbl)}</button>`+
+    `<button class="fbtn ${filterBrokers.size?'on':''}" onclick="openFilterMenu(event,'broker')">${brLbl}</button>`+
     (any?`<button class="fbtn clear" onclick="clearFilters()">✕ clear</button>`:'')+
     `<span class="viewtoggle" style="margin-left:auto"><button class="vbtn ${viewMode==='list'?'on':''}" onclick="setView('list')">List</button><button class="vbtn ${viewMode==='grid'?'on':''}" onclick="setView('grid')">Grid</button></span>`;
 }
@@ -2418,6 +2426,7 @@ function buildFilterMenu(kind){
   if(kind==='status')return STATUSES.map(s=>`<div class="opt" onclick="toggleFilter('${s.id}')"><span class="dot" style="background:${s.raw}"></span>${s.label}<span style="margin-left:auto;color:var(--accent)">${filterStatuses.has(s.id)?'✓':''}</span></div>`).join('');
   if(kind==='type'){const c=allTypes();return c.length?c.map(t=>`<div class="opt" onclick="toggleCat('${esc(t)}')">${esc(t)}<span style="margin-left:auto;color:var(--accent)">${filterCats.has(t)?'✓':''}</span></div>`).join(''):'<div class="opt">No types yet</div>';}
   if(kind==='cost')return `<div style="padding:10px 12px;min-width:210px"><div style="display:flex;gap:8px;align-items:center"><input id="fcmin" type="number" placeholder="min $" value="${filterCostMin??''}" class="rangesel" style="width:88px"><span class="hint">to</span><input id="fcmax" type="number" placeholder="max $" value="${filterCostMax??''}" class="rangesel" style="width:88px"></div><button class="fbtn on" style="margin-top:10px;width:100%" onclick="applyCostFilter()">Apply</button></div>`;
+  if(kind==='broker'){const b=allBrokers();return b.length?b.map(x=>`<div class="opt" onclick="toggleBroker('${esc(x)}')">${esc(x)}<span style="margin-left:auto;color:var(--accent)">${filterBrokers.has(x)?'✓':''}</span></div>`).join(''):'<div class="opt">No sales yet</div>';}
   return Object.entries(PERIOD_LABELS).map(([k,l])=>`<div class="opt" onclick="setPeriodFilter('${k}')">${l}<span style="margin-left:auto;color:var(--accent)">${filterPeriod===k?'✓':''}</span></div>`).join('');
 }
 function applyCostFilter(){const mn=document.getElementById('fcmin').value,mx=document.getElementById('fcmax').value;filterCostMin=mn===''?null:num(mn);filterCostMax=mx===''?null:num(mx);closeFilterMenu();renderFilters();renderTable();}
@@ -2431,7 +2440,7 @@ function openFilterMenu(e,kind){
 function refreshFilterMenu(){if(_filterKind){const m=document.getElementById('filtermenu');if(m.classList.contains('show'))m.innerHTML=buildFilterMenu(_filterKind);}}
 function closeFilterMenu(){document.getElementById('filtermenu').classList.remove('show');_filterKind=null;}
 document.getElementById('filtermenu').addEventListener('click',e=>e.stopPropagation());
-function afterFilterChange(){renderFilters();renderTable();refreshFilterMenu();}
+function afterFilterChange(){renderStats();renderFilters();renderTable();refreshFilterMenu();}
 function renderHead(){
   document.getElementById('headrow').innerHTML='<th style="width:26px"><input type="checkbox" id="selAll" onclick="toggleSelectAll(this.checked)"></th>'+COLS.map(c=>{
     if(c.nosort)return `<th>${c.label}</th>`;
@@ -2459,7 +2468,13 @@ function visibleRows(){
   if(filterCats.size)rows=rows.filter(r=>(r.it.tags||[]).some(tg=>filterCats.has(tg)));
   if(filterPeriod!=='all'){const b=rangeBounds(filterPeriod);rows=rows.filter(r=>inRange(r.t.date,b));}
   if(filterCostMin!=null||filterCostMax!=null)rows=rows.filter(r=>{const c=itemCost(r.t,r.it);return (filterCostMin==null||c>=filterCostMin)&&(filterCostMax==null||c<=filterCostMax);});
+  if(filterBrokers.size)rows=rows.filter(r=>r.it.sale&&filterBrokers.has(r.it.sale.broker));
   rows=rows.filter(r=>matchSearch(r.t,r.it));rows.sort(compare);return rows;
+}
+function soldMeta(t,it){
+  if(it.status!=='sold'||!it.sale||!it.sale.date)return '';
+  const held=daysToSell(t,it);
+  return `<div class="plest">Sold ${fmtDate(it.sale.date)}${held!=null?` · held ${held}d`:''} · ${daysSince(it.sale.date)}d ago</div>`;
 }
 function plCellHtml(t,it){
   const pl=estPL(t,it);if(!pl)return '<span class="hint">—</span>';
@@ -2495,7 +2510,7 @@ function renderTable(){
       <td><span class="ref">${esc(itemRef(r.t,r.it))}</span></td>
       <td class="txn">${fmtDate(r.t.date)}<div class="plest">${daysSince(r.t.date)}d ago</div></td>
       <td>${labelChip(r.t,r.it)}</td>
-      <td><span class="itemname">${esc(r.it.name)}</span>${r.it.isBundle?'<span class="bundletag">BUNDLE</span>':''}${r.t.note?`<div class="notetext">${esc(r.t.note)}</div>`:''}</td>
+      <td><span class="itemname">${esc(r.it.name)}</span>${r.it.isBundle?'<span class="bundletag">BUNDLE</span>':''}${r.t.note?`<div class="notetext">${esc(r.t.note)}</div>`:''}${soldMeta(r.t,r.it)}</td>
       <td><div class="tags">${tags}</div></td>
       <td><span class="statusbadge" style="background:${s.raw}22;color:${s.raw};border-color:${s.raw}55" onclick="openStatusMenu(event,'${r.t.id}','${r.it.id}')"><span class="dot" style="background:${s.raw}"></span>${s.label}</span></td>
       <td class="price" title="part of ${money(r.t.price)} deal">${money(itemCost(r.t,r.it))}</td>
@@ -2643,11 +2658,12 @@ function renderInsights(){renderInsightStats();requestAnimationFrame(renderChart
 
 /* ===================== STATEMENTS ===================== */
 function salesAgg(b){
-  let gross=0,fees=0,cogs=0;const byVendor={};
-  state.transactions.forEach(t=>t.items.forEach(it=>{if(hasSaleData(it)&&(!b||inRange(it.sale.date,b))){const g=saleGross(it);gross+=g;fees+=saleFees(it);cogs+=itemCost(t,it);const v=it.sale.broker||'Unknown';byVendor[v]=(byVendor[v]||0)+g;}}));
-  return {gross,fees,cogs,byVendor};
+  let gross=0,cogs=0,feeBroker=0,feeShip=0,feeOther=0;const byVendor={};
+  state.transactions.forEach(t=>t.items.forEach(it=>{if(hasSaleData(it)&&(!b||inRange(it.sale.date,b))){const g=saleGross(it);gross+=g;feeBroker+=num(it.sale.fees);feeShip+=num(it.sale.shipping);feeOther+=num(it.sale.other);cogs+=itemCost(t,it);const v=it.sale.broker||'Unknown';byVendor[v]=(byVendor[v]||0)+g;}}));
+  return {gross,fees:feeBroker+feeShip+feeOther,feeBroker,feeShip,feeOther,cogs,byVendor};
 }
-function ledgerByType(b){const o={};(state.expenses||[]).forEach(e=>{if(!b||inRange(e.date,b)){const k=e.type||'Other';o[k]=(o[k]||0)+num(e.amount);}});return o;}
+function expTags(e){return (e.tags&&e.tags.length)?e.tags:(e.type?[e.type]:[]);}
+function ledgerByType(b){const o={};(state.expenses||[]).forEach(e=>{if(!b||inRange(e.date,b)){const k=expTags(e)[0]||'Other';o[k]=(o[k]||0)+num(e.amount);}});return o;}
 function ledgerTotal(b){return (state.expenses||[]).filter(e=>!b||inRange(e.date,b)).reduce((a,e)=>a+num(e.amount),0);}
 function purchasesAgg(b){let total=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))total+=Number(t.price)||0;});return total;}
 function renderIncomeStatement(){
@@ -2657,14 +2673,20 @@ function renderIncomeStatement(){
   const vend=Object.entries(A.byVendor).sort((a,b)=>b[1]-a[1]);
   const totalExp=purch+A.fees+ledgerTotal(b);
   const net=A.gross-totalExp;
+  const lgTot=ledgerTotal(b);
   let h='<table class="stmt"><tbody>';
   h+='<tr class="tot"><td>Gross sales</td><td class="r">'+money(A.gross)+'</td></tr>';
   vend.forEach(([v,a])=>h+=`<tr class="sub"><td>&nbsp;&nbsp;${esc(v)}</td><td class="r">${money(a)}</td></tr>`);
   if(!vend.length)h+='<tr class="sub"><td>&nbsp;&nbsp;No sales recorded yet</td><td class="r">—</td></tr>';
-  h+='<tr class="tot"><td>Expenses</td><td class="r"></td></tr>';
+  h+='<tr class="tot"><td>Inventory costs</td><td class="r"></td></tr>';
   h+=`<tr class="sub"><td>&nbsp;&nbsp;Inventory purchased (incl. unsold)</td><td class="r">${money(purch)}</td></tr>`;
-  h+=`<tr class="sub"><td>&nbsp;&nbsp;Selling fees (broker/shipping/other)</td><td class="r">${money(A.fees)}</td></tr>`;
+  h+='<tr class="tot"><td>Selling fees</td><td class="r"></td></tr>';
+  h+=`<tr class="sub"><td>&nbsp;&nbsp;Broker fees</td><td class="r">${money(A.feeBroker)}</td></tr>`;
+  h+=`<tr class="sub"><td>&nbsp;&nbsp;Shipping</td><td class="r">${money(A.feeShip)}</td></tr>`;
+  h+=`<tr class="sub"><td>&nbsp;&nbsp;Other</td><td class="r">${money(A.feeOther)}</td></tr>`;
+  h+=`<tr class="tot"><td>Ledger expenses</td><td class="r">${money(lgTot)}</td></tr>`;
   Object.entries(lt).sort((a,b)=>b[1]-a[1]).forEach(([k,a])=>h+=`<tr class="sub"><td>&nbsp;&nbsp;${esc(k)}</td><td class="r">${money(a)}</td></tr>`);
+  if(!Object.keys(lt).length)h+='<tr class="sub"><td>&nbsp;&nbsp;None logged</td><td class="r">—</td></tr>';
   h+=`<tr class="tot"><td>Total expenses</td><td class="r">${money(totalExp)}</td></tr>`;
   h+=`<tr class="grand"><td>Net profit</td><td class="r ${net>=0?'pos':'neg'}">${money(net)}</td></tr>`;
   h+='</tbody></table>';
@@ -2672,34 +2694,53 @@ function renderIncomeStatement(){
 }
 function auFYStart(iso){const d=new Date(iso+'T00:00:00');const y=d.getFullYear(),m=d.getMonth()+1;return m>=7?y:y-1;}
 function fyLabel(s){return `FY ${s}–${String(s+1).slice(2)}`;}
+// estimated income tax on a taxable amount, ATO resident brackets 2025-26 (excl. Medicare levy & offsets)
+function estIncomeTax(taxable){
+  let t=Math.max(0,taxable),tax=0,prev=0;
+  for(const [cap,rate] of [[18200,0],[45000,0.16],[135000,0.30],[190000,0.37],[Infinity,0.45]]){
+    if(t>prev){tax+=(Math.min(t,cap)-prev)*rate;prev=cap;}else break;
+  }
+  return tax;
+}
 function renderTaxReport(){
   const fy={};const ens=s=>fy[s]||(fy[s]={income:0,cogs:0,fees:0,exp:0});
   state.transactions.forEach(t=>t.items.forEach(it=>{if(hasSaleData(it)&&it.sale.date){const s=auFYStart(it.sale.date);ens(s);fy[s].income+=saleGross(it);fy[s].cogs+=itemCost(t,it);fy[s].fees+=saleFees(it);}}));
   (state.expenses||[]).forEach(e=>{if(e.date){const s=auFYStart(e.date);ens(s);fy[s].exp+=num(e.amount);}});
   const years=Object.keys(fy).map(Number).sort();
-  let h='<table class="stmt"><thead><tr><td>Financial year</td><td class="r">Gross sales</td><td class="r">COGS</td><td class="r">Selling fees</td><td class="r">Other expenses</td><td class="r">Net (taxable)</td></tr></thead><tbody>';
-  if(!years.length)h+='<tr class="sub"><td colspan="6">No dated sales or expenses yet.</td></tr>';
-  years.forEach(s=>{const r=fy[s];const net=r.income-r.cogs-r.fees-r.exp;h+=`<tr><td>${fyLabel(s)}</td><td class="r">${money(r.income)}</td><td class="r">${money(r.cogs)}</td><td class="r">${money(r.fees)}</td><td class="r">${money(r.exp)}</td><td class="r ${net>=0?'pos':'neg'}">${money(net)}</td></tr>`;});
-  h+='</tbody></table>';
+  let h='<table class="stmt"><thead><tr><td>Financial year</td><td class="r">Gross sales</td><td class="r">COGS</td><td class="r">Fees</td><td class="r">Deductions</td><td class="r">Net (taxable)</td><td class="r">Est. tax</td></tr></thead><tbody>';
+  if(!years.length)h+='<tr class="sub"><td colspan="7">No dated sales or expenses yet.</td></tr>';
+  years.forEach(s=>{const r=fy[s];const net=r.income-r.cogs-r.fees-r.exp;const tax=estIncomeTax(net);h+=`<tr><td>${fyLabel(s)}</td><td class="r">${money(r.income)}</td><td class="r">${money(r.cogs)}</td><td class="r">${money(r.fees)}</td><td class="r">${money(r.exp)}</td><td class="r ${net>=0?'pos':'neg'}">${money(net)}</td><td class="r">${money(tax)}</td></tr>`;});
+  h+='</tbody></table><div class="hint" style="margin-top:8px">Est. tax applies 2025–26 ATO resident brackets to this activity\'s net (after COGS, fees &amp; deductions). It assumes this is your only taxable income and excludes the Medicare levy, offsets, GST &amp; other income — a rough guide, not tax advice.</div>';
   document.getElementById('taxReport').innerHTML=h;
 }
+function allExpTags(){const s=new Set();(state.expenses||[]).forEach(e=>expTags(e).forEach(t=>s.add(t)));return [...s].sort();}
+let ledgerTag='', ledgerPeriod='all';
 function renderExpenses(){
-  const list=[...(state.expenses||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  let h='<table class="stmt"><thead><tr><td>Date</td><td>Description</td><td>Type</td><td>Vendor</td><td class="r">Amount</td><td></td></tr></thead><tbody>';
-  if(!list.length)h+='<tr class="sub"><td colspan="6">No expenses logged yet.</td></tr>';
-  list.forEach(e=>h+=`<tr><td>${fmtDate(e.date)}</td><td>${esc(e.desc||'')}</td><td>${esc(e.type||'')}</td><td>${esc(e.vendor||'')}</td><td class="r">${money(e.amount)}</td><td class="r"><button class="delx" title="Delete" onclick="delExpense('${e.id}')">✕</button></td></tr>`);
-  if(list.length)h+=`<tr class="grand"><td colspan="4">Total</td><td class="r">${money(ledgerTotal())}</td><td></td></tr>`;
+  let list=[...(state.expenses||[])];
+  if(ledgerPeriod!=='all'){const b=rangeBounds(ledgerPeriod);list=list.filter(e=>inRange(e.date,b));}
+  if(ledgerTag)list=list.filter(e=>expTags(e).includes(ledgerTag));
+  list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const tags=allExpTags();
+  let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <select class="rangesel" onchange="ledgerTag=this.value;renderExpenses()"><option value="">All tags</option>${tags.map(t=>`<option ${ledgerTag===t?'selected':''}>${esc(t)}</option>`).join('')}</select>
+    <select class="rangesel" onchange="ledgerPeriod=this.value;renderExpenses()">${Object.entries(PERIOD_LABELS).map(([k,l])=>`<option value="${k}" ${ledgerPeriod===k?'selected':''}>${l}</option>`).join('')}</select>
+  </div>`;
+  h+='<table class="stmt"><thead><tr><td>Date</td><td>Description</td><td>Tags</td><td>Vendor</td><td class="r">Amount</td><td></td></tr></thead><tbody>';
+  if(!list.length)h+='<tr class="sub"><td colspan="6">No expenses match.</td></tr>';
+  list.forEach(e=>h+=`<tr><td>${fmtDate(e.date)}</td><td>${esc(e.desc||'')}</td><td><div class="tags">${expTags(e).map(t=>`<span class="tag" style="background:${hashColor(t)}">${esc(t)}</span>`).join('')}</div></td><td>${esc(e.vendor||'')}</td><td class="r">${money(e.amount)}</td><td class="r"><button class="delx" title="Delete" onclick="delExpense('${e.id}')">✕</button></td></tr>`);
+  const tot=list.reduce((a,e)=>a+num(e.amount),0);
+  if(list.length)h+=`<tr class="grand"><td colspan="4">Total${(ledgerTag||ledgerPeriod!=='all')?' (filtered)':''}</td><td class="r">${money(tot)}</td><td></td></tr>`;
   h+='</tbody></table>';
   document.getElementById('expenseList').innerHTML=h;
 }
 function addExpense(){
   const date=document.getElementById('e_date').value||new Date().toISOString().slice(0,10);
   const desc=document.getElementById('e_desc').value.trim();
-  const type=document.getElementById('e_type').value.trim()||'Other';
+  const tags=document.getElementById('e_type').value.split(',').map(s=>s.trim()).filter(Boolean);
   const vendor=document.getElementById('e_vendor').value.trim();
   const amount=num(document.getElementById('e_amount').value);
   if(!amount){alert('Enter an amount.');return;}
-  state.expenses.push({id:uid(),date,desc,type,vendor,amount});save();
+  state.expenses.push({id:uid(),date,desc,tags:tags.length?tags:['Other'],vendor,amount});save();
   document.getElementById('e_desc').value='';document.getElementById('e_type').value='';document.getElementById('e_vendor').value='';document.getElementById('e_amount').value='';
   renderStatements();
 }
@@ -2811,7 +2852,7 @@ let calcInit=false;
 function v(id){return document.getElementById(id).value;}
 function renderCalc(){
   if(!calcInit){
-    document.getElementById('c_plan').innerHTML=Object.entries(CALC_PLANS).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join('');
+    document.getElementById('c_plan').innerHTML=Object.entries(CALC_PLANS).map(([k,p])=>`<option value="${k}" ${k==='ebay_basic'?'selected':''}>${p.label}</option>`).join('');
     document.getElementById('c_cat').innerHTML=CALC_CATEGORIES.map(c=>`<option value="${c[0]}">${c[1]} (${c[2]}%)</option>`).join('');
     calcInit=true;
   }
@@ -2867,8 +2908,9 @@ function renderAll(){if(page==='inv')renderInv();else if(page==='insights')rende
 function setSort(k){if(sortKey===k){sortDir=sortDir==='asc'?'desc':'asc';}else{sortKey=k;sortDir='asc';}renderInv();}
 function toggleFilter(id){filterStatuses.has(id)?filterStatuses.delete(id):filterStatuses.add(id);afterFilterChange();}
 function toggleCat(c){filterCats.has(c)?filterCats.delete(c):filterCats.add(c);afterFilterChange();}
+function toggleBroker(b){filterBrokers.has(b)?filterBrokers.delete(b):filterBrokers.add(b);afterFilterChange();}
 function setPeriodFilter(p){filterPeriod=p;closeFilterMenu();renderFilters();renderTable();}
-function clearFilters(){filterStatuses.clear();filterCats.clear();filterPeriod='all';filterCostMin=null;filterCostMax=null;closeFilterMenu();renderInv();}
+function clearFilters(){filterStatuses.clear();filterCats.clear();filterPeriod='all';filterCostMin=null;filterCostMax=null;filterBrokers.clear();closeFilterMenu();renderInv();}
 function setView(v){viewMode=v;renderInv();}
 document.getElementById('search').addEventListener('input',e=>{search=e.target.value;if(page==='inv')renderTable();});
 
@@ -3023,15 +3065,16 @@ function deleteTxn(){if(!editingId)return;if(!confirm('Delete this entire transa
 function exportJSON(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='inventory-'+new Date().toISOString().slice(0,10)+'.json';a.click();}
 function importJSON(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.transactions)throw 0;state=d;if(!state.expenses)state.expenses=[];migrate();save();renderAll();}catch(_){alert('Invalid backup file.');}};r.readAsText(f);e.target.value='';}
 function exportCSV(){
-  const head=['Ref','Txn#','Date','Price','Label','Bundle','Item','Type','Tags','Status','Cost','Expected','EstOrActualPL','Broker','SaleDate','SalePrice','SaleAmount','Fees','Shipping','Other','NetProfit','Note'];
+  const head=['Ref','Txn#','PurchaseDate','DealPrice','Label','Bundle','Item','Type','Tags','Status','Cost','Expected','EstOrActualPL','MarginPct','Broker','SaleDate','HeldDays','DaysSinceSold','SalePrice','SaleAmount','Fees','Shipping','Other','NetProfit','Note'];
   const lines=[head.join(',')];
   state.transactions.forEach(t=>t.items.forEach(it=>{
-    const s=it.sale||{};const prof=saleProfit(t,it);const pl=estPL(t,it);
-    const row=[itemRef(t,it),t.txnNumber,fmtDate(t.date),t.price,it.label,it.isBundle?'yes':'no',it.name,primaryType(it),(it.tags||[]).join('; '),(STATUS[it.status]||{}).label||it.status,itemCost(t,it).toFixed(2),it.expected??'',pl?pl.val.toFixed(2):'',s.broker||'',s.date?fmtDate(s.date):'',s.salePrice??'',s.saleAmount??'',s.fees??'',s.shipping??'',s.other??'',prof!=null?prof.toFixed(2):'',t.note||''];
+    const s=it.sale||{};const prof=saleProfit(t,it);const pl=estPL(t,it);const g=saleGross(it);
+    const marginPct=(it.status==='sold'&&g>0&&prof!=null)?(prof/g*100).toFixed(0):'';
+    const row=[itemRef(t,it),t.txnNumber,fmtDate(t.date),t.price,it.label,it.isBundle?'yes':'no',it.name,primaryType(it),(it.tags||[]).join('; '),(STATUS[it.status]||{}).label||it.status,itemCost(t,it).toFixed(2),it.expected??'',pl?pl.val.toFixed(2):'',marginPct,s.broker||'',s.date?fmtDate(s.date):'',(it.status==='sold'&&daysToSell(t,it)!=null)?daysToSell(t,it):'',(s.date)?daysSince(s.date):'',s.salePrice??'',s.saleAmount??'',s.fees??'',s.shipping??'',s.other??'',prof!=null?prof.toFixed(2):'',t.note||''];
     lines.push(row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
   }));
-  lines.push('');lines.push('EXPENSES');lines.push(['Date','Description','Type','Vendor','Amount'].join(','));
-  (state.expenses||[]).forEach(e=>lines.push([fmtDate(e.date),e.desc||'',e.type||'',e.vendor||'',e.amount].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
+  lines.push('');lines.push('EXPENSES');lines.push(['Date','Description','Tags','Vendor','Amount'].join(','));
+  (state.expenses||[]).forEach(e=>lines.push([fmtDate(e.date),e.desc||'',expTags(e).join('; '),e.vendor||'',e.amount].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
   const blob=new Blob([lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='inventory-'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeSale();}});
