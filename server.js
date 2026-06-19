@@ -166,14 +166,18 @@ app.get('/api/ebay/connect', auth, (req, res) => {
 
 // OAuth callback — eBay redirects the user here after consent
 app.get('/api/ebay/callback', async (req, res) => {
+  if (req.query.error) { console.error('eBay auth error:', req.query.error, req.query.error_description); return res.redirect('/?ebay=error&reason=' + encodeURIComponent(req.query.error_description || req.query.error)); }
   const code = req.query.code;
   if (!code) return res.redirect('/?ebay=declined');
   try {
     const j = await ebayTokenRequest({ grant_type: 'authorization_code', code, redirect_uri: EBAY_RUNAME });
     await ebaySaveTok({ refresh_token: j.refresh_token, access_token: j.access_token, expires_at: Date.now() + (j.expires_in * 1000) });
     res.redirect('/?ebay=connected');
-  } catch (e) { console.error('eBay callback:', e.message); res.redirect('/?ebay=error'); }
+  } catch (e) { console.error('eBay callback:', e.message); res.redirect('/?ebay=error&reason=' + encodeURIComponent(e.message)); }
 });
+
+// simple privacy policy page (eBay OAuth consent requires a privacy policy URL)
+app.get('/privacy', (req, res) => res.send('<!doctype html><html><head><meta charset="utf-8"><title>Williams — Privacy Policy</title></head><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:48px auto;padding:0 18px;line-height:1.6;color:#222"><h1>Williams — Privacy Policy</h1><p>Williams is a private, single-user inventory and bookkeeping tool used by its owner. When connected to eBay, it accesses <strong>only the owner\'s own eBay account</strong> on a read-only basis to import the owner\'s own orders and fee data.</p><p>It does <strong>not</strong> collect, store, share, or sell any other person\'s personal information. eBay marketplace account-deletion notifications are acknowledged and no third-party user data is retained.</p><p>For any questions, contact the account owner.</p></body></html>'));
 
 app.post('/api/ebay/disconnect', auth, async (req, res) => {
   if (pool) await pool.query('DELETE FROM ebay_tokens WHERE id=1'); else memTok = null;

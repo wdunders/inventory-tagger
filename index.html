@@ -2757,9 +2757,10 @@ async function ebaySync(){
   }catch(e){msg.innerHTML='<span class="neg">Sync failed.</span>';}
 }
 function handleEbayReturn(){
-  const p=new URLSearchParams(location.search).get('ebay');if(!p)return;
-  const m={connected:'eBay connected ✓',declined:'eBay connection was declined.',error:'eBay connection failed — check your keys/RuName.'};
-  setTimeout(()=>{const el=document.getElementById('ebayMsg');if(el)el.textContent=m[p]||'';},400);
+  const q=new URLSearchParams(location.search);const p=q.get('ebay');if(!p)return;
+  const reason=q.get('reason');
+  const m={connected:'eBay connected ✓',declined:'Connection declined — make sure OAuth is enabled on your RuName and you clicked Agree.',error:'eBay error: '+(reason||'check keys / RuName / privacy URL')};
+  setTimeout(()=>{const el=document.getElementById('ebayMsg');if(el){el.textContent=m[p]||'';el.className='hint '+(p==='connected'?'pos':'neg');}},500);
   history.replaceState({},'',location.pathname);
 }
 function renderTodo(){
