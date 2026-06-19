@@ -85,10 +85,10 @@ app.put('/api/state', auth, async (req, res) => {
 });
 
 /* ===================== eBay integration (Phase 2) ===================== */
-const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID || '';
-const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET || '';
-const EBAY_RUNAME = process.env.EBAY_RUNAME || '';
-const EBAY_VERIFICATION_TOKEN = process.env.EBAY_VERIFICATION_TOKEN || '';
+const EBAY_CLIENT_ID = (process.env.EBAY_CLIENT_ID || '').trim();
+const EBAY_CLIENT_SECRET = (process.env.EBAY_CLIENT_SECRET || '').trim();
+const EBAY_RUNAME = (process.env.EBAY_RUNAME || '').trim();
+const EBAY_VERIFICATION_TOKEN = (process.env.EBAY_VERIFICATION_TOKEN || '').trim();
 const APP_URL = (process.env.APP_URL || 'https://williams.up.railway.app').replace(/\/$/, '');
 const EBAY_SCOPES = 'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly https://api.ebay.com/oauth/api_scope/sell.finances';
 let memTok = null;
