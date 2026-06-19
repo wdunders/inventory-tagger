@@ -262,13 +262,30 @@ app.post('/api/ebay/sync', auth, async (req, res) => {
   } catch (e) { console.error('eBay sync:', e); res.status(500).json({ error: e.message }); }
 });
 
-// quick diagnostic
-app.get('/api/ebay/debug', auth, async (req, res) => {
+// diagnostic — viewable in a browser with ?pw=<your login code>&sku=<ref>
+app.get('/api/ebay/debug', async (req, res) => {
+  if (!(req.headers['x-auth'] === TOKEN || passwordOk(req.query.pw))) return res.status(401).json({ error: 'unauthorized — add ?pw=YOURCODE' });
   try {
     const at = await ebayAccessToken();
     if (!at) return res.json({ connected: false });
-    const o = await ebayGet('https://api.ebay.com/sell/fulfillment/v1/order?limit=3', at);
-    res.json({ connected: true, total: o.total, sampleSkus: (o.orders || []).flatMap(x => (x.lineItems || []).map(l => l.sku)) });
+    const sku = String(req.query.sku || '').toLowerCase();
+    const o = await ebayGet('https://api.ebay.com/sell/fulfillment/v1/order?limit=200', at);
+    let tx = { transactions: [] };
+    try { tx = await ebayGet('https://apiz.ebay.com/sell/finances/v1/transaction?limit=200', at); } catch (e) { tx = { error: e.message }; }
+    let orders = (o.orders || []).map(x => ({
+      orderId: x.orderId, pay: x.orderPaymentStatus, cancel: x.cancelStatus && x.cancelStatus.cancelState,
+      date: (x.creationDate || '').slice(0, 10), total: x.pricingSummary && x.pricingSummary.total,
+      lines: (x.lineItems || []).map(l => ({ sku: l.sku, total: l.total }))
+    }));
+    if (sku) orders = orders.filter(x => x.lines.some(l => String(l.sku || '').toLowerCase().includes(sku)));
+    const ids = new Set(orders.map(x => x.orderId));
+    let txns = (tx.transactions || []).map(t => ({
+      type: t.transactionType, amount: t.amount, totalFee: t.totalFeeAmount,
+      refs: (t.references || []).map(r => r.referenceType + ':' + r.referenceId),
+      lineFees: (t.orderLineItems || []).flatMap(li => (li.marketplaceFees || []).map(f => f.feeType + '=' + (f.amount && f.amount.value)))
+    }));
+    if (sku) txns = txns.filter(t => t.refs.some(r => [...ids].some(id => r.includes(id))) || t.lineFees.some(f => /AD_FEE/i.test(f)));
+    res.json({ connected: true, totalOrders: o.total, finances: tx.error || 'ok', orders, relatedTransactions: txns.slice(0, 40) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
