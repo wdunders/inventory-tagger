@@ -190,14 +190,19 @@ function applyEbayOrders(state, orders, feeByOrder) {
   state.transactions.forEach(t => t.items.forEach(it => {
     if (it.status !== 'sold') { const ref = String(t.txnNumber) + String(it.label || '').toLowerCase(); (byRef[ref] = byRef[ref] || []).push(it); }
   }));
-  let matched = 0, unmatched = 0;
+  let matched = 0, unmatched = 0, skippedUnpaid = 0;
   orders.forEach(o => {
+    // only treat genuinely sold orders (paid, not cancelled) — avoids marking unpaid/Best-Offer-pending orders as sold
+    if (o.orderPaymentStatus && o.orderPaymentStatus !== 'PAID' && o.orderPaymentStatus !== 'PARTIALLY_REFUNDED') { skippedUnpaid++; return; }
+    if (o.cancelStatus && o.cancelStatus.cancelState && o.cancelStatus.cancelState !== 'NONE_REQUESTED') { skippedUnpaid++; return; }
     const date = (o.creationDate || '').slice(0, 10);
     const orderTotal = Number((o.pricingSummary && o.pricingSummary.total && o.pricingSummary.total.value) || 0);
-    const orderFee = Number(feeByOrder[o.orderId] || 0);
+    const f = feeByOrder[o.orderId] || { broker: 0, shipping: 0 };
     (o.lineItems || []).forEach(li => {
       const price = Number((li.total && li.total.value) || (li.lineItemCost && li.lineItemCost.value) || 0);
-      const fee = orderTotal > 0 ? orderFee * (price / orderTotal) : 0;
+      const share = orderTotal > 0 ? (price / orderTotal) : 1;
+      const broker = Math.round(f.broker * share * 100) / 100;
+      const shipping = Math.round(f.shipping * share * 100) / 100;
       const skus = String(li.sku || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
       let assigned = false;
       for (const sku of skus) {
@@ -205,14 +210,14 @@ function applyEbayOrders(state, orders, feeByOrder) {
         if (list && list.length) {
           const it = list.shift();
           it.status = 'sold';
-          it.sale = { broker: 'eBay', date, salePrice: price, saleAmount: price, fees: Math.round(fee * 100) / 100, shipping: (it.sale && it.sale.shipping) || 0, other: 0, ebayOrderId: o.orderId };
+          it.sale = { broker: 'eBay', date, salePrice: price, saleAmount: price, fees: broker, shipping: shipping || ((it.sale && it.sale.shipping) || 0), other: 0, ebayOrderId: o.orderId };
           matched++; assigned = true; break;
         }
       }
       if (!assigned) unmatched++;
     });
   });
-  return { orders: orders.length, matched, unmatched };
+  return { orders: orders.length, matched, unmatched, skippedUnpaid };
 }
 
 // pull sold orders + fees, match by SKU, save
@@ -234,12 +239,20 @@ app.post('/api/ebay/sync', auth, async (req, res) => {
       txns = txns.concat(batch);
       if (batch.length < 200) break; fo += batch.length;
     }
+    // Classify eBay fees per order:
+    //  broker  = all eBay selling fees: SALE.totalFeeAmount (final value, fixed, international, regulatory)
+    //            + NON_SALE_CHARGE transactions tied to the order (promoted-listing AD fees & separately-billed fees)
+    //  shipping = SHIPPING_LABEL transactions (eBay-purchased postage)
     const feeByOrder = {};
+    const addFee = (oid, kind, amt) => { if (!oid || !amt) return; (feeByOrder[oid] = feeByOrder[oid] || { broker: 0, shipping: 0 }); feeByOrder[oid][kind] += amt; };
     txns.forEach(tx => {
       let orderId = tx.orderId || null;
       if (!orderId && Array.isArray(tx.references)) { const r = tx.references.find(x => x.referenceType === 'ORDER_ID'); orderId = r ? r.referenceId : null; }
       if (!orderId) return;
-      if (tx.transactionType === 'SALE') feeByOrder[orderId] = (feeByOrder[orderId] || 0) + Number((tx.totalFeeAmount && tx.totalFeeAmount.value) || 0);
+      const amt = Number((tx.amount && tx.amount.value) || 0);
+      if (tx.transactionType === 'SALE') addFee(orderId, 'broker', Number((tx.totalFeeAmount && tx.totalFeeAmount.value) || 0));
+      else if (tx.transactionType === 'NON_SALE_CHARGE') addFee(orderId, 'broker', amt);
+      else if (tx.transactionType === 'SHIPPING_LABEL') addFee(orderId, 'shipping', amt);
     });
     const state = await loadStateInternal();
     if (!state || !Array.isArray(state.transactions)) return res.status(400).json({ error: 'no inventory data' });
