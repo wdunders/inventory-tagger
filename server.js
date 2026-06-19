@@ -184,47 +184,60 @@ app.post('/api/ebay/disconnect', auth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// match an eBay order's line items to inventory by SKU (earliest unsold wins for multi-SKU listings)
+// Match eBay sales to inventory by SKU. A listing's SKU can be a comma-separated, left-to-right
+// list of refs (multi-quantity listing). We count how many UNITS eBay has sold for each listing,
+// then mark the first N refs sold (earliest sale -> leftmost ref) and revert any we'd wrongly
+// marked beyond that count.
 function applyEbayOrders(state, orders, feeByOrder) {
-  // unsoldByRef: candidates for a NEW match. ebayByOrder: items already synced from eBay (so re-sync can refresh their fees, e.g. ad fees billed later)
-  const unsoldByRef = {}, ebayByOrder = {};
-  state.transactions.forEach(t => t.items.forEach(it => {
-    const ref = String(t.txnNumber) + String(it.label || '').toLowerCase();
-    if (it.sale && it.sale.ebayOrderId) { (ebayByOrder[it.sale.ebayOrderId] = ebayByOrder[it.sale.ebayOrderId] || []).push({ it, ref }); }
-    else if (it.status !== 'sold') { (unsoldByRef[ref] = unsoldByRef[ref] || []).push(it); }
-  }));
-  let matched = 0, updated = 0, unmatched = 0, skippedUnpaid = 0;
+  // refs are unique (txnNumber + label), so index every item by ref
+  const byRef = {};
+  state.transactions.forEach(t => t.items.forEach(it => { byRef[String(t.txnNumber) + String(it.label || '').toLowerCase()] = it; }));
+
+  // group sold units by listing (same comma-SKU string = same listing)
+  const groups = {}; let skippedUnpaid = 0;
   orders.forEach(o => {
-    // only treat genuinely sold orders (paid, not cancelled)
     if (o.orderPaymentStatus && o.orderPaymentStatus !== 'PAID' && o.orderPaymentStatus !== 'PARTIALLY_REFUNDED') { skippedUnpaid++; return; }
     if (o.cancelStatus && o.cancelStatus.cancelState && o.cancelStatus.cancelState !== 'NONE_REQUESTED') { skippedUnpaid++; return; }
     const date = (o.creationDate || '').slice(0, 10);
     const orderTotal = Number((o.pricingSummary && o.pricingSummary.total && o.pricingSummary.total.value) || 0);
     const f = feeByOrder[o.orderId] || { broker: 0, shipping: 0 };
     (o.lineItems || []).forEach(li => {
-      // multi-quantity listing: one listing holds several copies, refs comma-separated left-to-right.
-      // each UNIT sold consumes the next ref in order.
+      const key = String(li.sku || '').trim().toLowerCase();
+      if (!key) return;
+      const refs = key.split(',').map(s => s.trim()).filter(Boolean);
       const qty = Math.max(1, Number(li.quantity || 1));
       const lineTotal = Number((li.total && li.total.value) || (li.lineItemCost && li.lineItemCost.value) || 0);
       const unitPrice = Math.round((lineTotal / qty) * 100) / 100;
       const lineShare = orderTotal > 0 ? (lineTotal / orderTotal) : 1;
       const unitBroker = Math.round((f.broker * lineShare / qty) * 100) / 100;
       const unitShipping = Math.round((f.shipping * lineShare / qty) * 100) / 100;
-      const skus = String(li.sku || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      const setSale = (it) => { it.status = 'sold'; it.sale = { broker: 'eBay', date, salePrice: unitPrice, saleAmount: unitPrice, fees: unitBroker, shipping: unitShipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: o.orderId }; };
-      const ex = ebayByOrder[o.orderId] || [];
-      let units = qty, did = 0;
-      for (const sku of skus) {
-        if (units <= 0) break;
-        const e = ex.find(x => x.ref === sku && !x.used);          // refresh an already-synced unit for this order
-        if (e) { e.used = true; setSale(e.it); updated++; units--; did++; continue; }
-        const list = unsoldByRef[sku];                              // else newly mark the next unsold ref sold
-        if (list && list.length) { setSale(list.shift()); matched++; units--; did++; continue; }
-      }
-      if (did === 0) unmatched++;
+      const g = groups[key] || (groups[key] = { refs, units: [], orderIds: new Set() });
+      g.orderIds.add(o.orderId);
+      for (let u = 0; u < qty; u++) g.units.push({ price: unitPrice, broker: unitBroker, shipping: unitShipping, date, orderId: o.orderId });
     });
   });
-  return { orders: orders.length, matched, updated, unmatched, skippedUnpaid };
+
+  let matched = 0, updated = 0, unmatched = 0, reverted = 0;
+  Object.values(groups).forEach(g => {
+    g.units.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.orderId || '').localeCompare(b.orderId || ''));
+    g.refs.forEach((ref, i) => {
+      const it = byRef[ref];
+      if (i < g.units.length) {
+        // one of the first N refs -> SOLD (leftmost = earliest sale)
+        if (!it) { unmatched++; return; }
+        const u = g.units[i];
+        const wasEbay = it.sale && it.sale.ebayOrderId;
+        it.status = 'sold';
+        it.sale = { broker: 'eBay', date: u.date, salePrice: u.price, saleAmount: u.price, fees: u.broker, shipping: u.shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: u.orderId };
+        if (wasEbay) updated++; else matched++;
+      } else if (it && it.sale && it.sale.ebayOrderId && g.orderIds.has(it.sale.ebayOrderId)) {
+        // beyond the units sold, but we'd previously marked it sold for this listing -> revert (it's still active)
+        it.status = 'listed'; it.sale = null; reverted++;
+      }
+    });
+    if (g.units.length > g.refs.length) unmatched += (g.units.length - g.refs.length);
+  });
+  return { orders: orders.length, matched, updated, unmatched, reverted, skippedUnpaid };
 }
 
 // pull sold orders + fees, match by SKU, save
