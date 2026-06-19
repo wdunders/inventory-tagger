@@ -2752,7 +2752,7 @@ async function ebaySync(){
     // reload fresh data from server
     const sr=await api('GET','/api/state');const sj=await sr.json();
     if(sj&&sj.data&&Array.isArray(sj.data.transactions)){state=sj.data;migrate();try{localStorage.setItem(KEY,JSON.stringify(state));}catch(_){}}
-    msg.innerHTML=`<span class="pos">Synced ${j.matched} item${j.matched===1?'':'s'} as sold</span> from ${j.orders} eBay orders${j.unmatched?` · ${j.unmatched} line(s) had no matching SKU`:''}${j.skippedUnpaid?` · skipped ${j.skippedUnpaid} unpaid/cancelled`:''}.`;
+    msg.innerHTML=`<span class="pos">Synced ${j.matched} new sold</span>${j.updated?` · refreshed ${j.updated}`:''} from ${j.orders} eBay orders${j.unmatched?` · ${j.unmatched} line(s) no SKU match`:''}${j.skippedUnpaid?` · skipped ${j.skippedUnpaid} unpaid/cancelled`:''}.`;
     renderHome();
   }catch(e){msg.innerHTML='<span class="neg">Sync failed.</span>';}
 }

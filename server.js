@@ -186,13 +186,16 @@ app.post('/api/ebay/disconnect', auth, async (req, res) => {
 
 // match an eBay order's line items to inventory by SKU (earliest unsold wins for multi-SKU listings)
 function applyEbayOrders(state, orders, feeByOrder) {
-  const byRef = {};
+  // unsoldByRef: candidates for a NEW match. ebayByOrder: items already synced from eBay (so re-sync can refresh their fees, e.g. ad fees billed later)
+  const unsoldByRef = {}, ebayByOrder = {};
   state.transactions.forEach(t => t.items.forEach(it => {
-    if (it.status !== 'sold') { const ref = String(t.txnNumber) + String(it.label || '').toLowerCase(); (byRef[ref] = byRef[ref] || []).push(it); }
+    const ref = String(t.txnNumber) + String(it.label || '').toLowerCase();
+    if (it.sale && it.sale.ebayOrderId) { (ebayByOrder[it.sale.ebayOrderId] = ebayByOrder[it.sale.ebayOrderId] || []).push({ it, ref }); }
+    else if (it.status !== 'sold') { (unsoldByRef[ref] = unsoldByRef[ref] || []).push(it); }
   }));
-  let matched = 0, unmatched = 0, skippedUnpaid = 0;
+  let matched = 0, updated = 0, unmatched = 0, skippedUnpaid = 0;
   orders.forEach(o => {
-    // only treat genuinely sold orders (paid, not cancelled) — avoids marking unpaid/Best-Offer-pending orders as sold
+    // only treat genuinely sold orders (paid, not cancelled)
     if (o.orderPaymentStatus && o.orderPaymentStatus !== 'PAID' && o.orderPaymentStatus !== 'PARTIALLY_REFUNDED') { skippedUnpaid++; return; }
     if (o.cancelStatus && o.cancelStatus.cancelState && o.cancelStatus.cancelState !== 'NONE_REQUESTED') { skippedUnpaid++; return; }
     const date = (o.creationDate || '').slice(0, 10);
@@ -204,20 +207,18 @@ function applyEbayOrders(state, orders, feeByOrder) {
       const broker = Math.round(f.broker * share * 100) / 100;
       const shipping = Math.round(f.shipping * share * 100) / 100;
       const skus = String(li.sku || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      let assigned = false;
-      for (const sku of skus) {
-        const list = byRef[sku];
-        if (list && list.length) {
-          const it = list.shift();
-          it.status = 'sold';
-          it.sale = { broker: 'eBay', date, salePrice: price, saleAmount: price, fees: broker, shipping: shipping || ((it.sale && it.sale.shipping) || 0), other: 0, ebayOrderId: o.orderId };
-          matched++; assigned = true; break;
-        }
-      }
-      if (!assigned) unmatched++;
+      const setSale = (it) => { it.status = 'sold'; it.sale = { broker: 'eBay', date, salePrice: price, saleAmount: price, fees: broker, shipping: shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: o.orderId }; };
+      let done = false;
+      // 1) refresh an already-synced eBay item for this order (keeps fees current incl. ad fees billed later)
+      const ex = ebayByOrder[o.orderId] || [];
+      for (const sku of skus) { const e = ex.find(x => x.ref === sku && !x.used); if (e) { e.used = true; setSale(e.it); updated++; done = true; break; } }
+      if (done) return;
+      // 2) otherwise match an unsold inventory item by SKU (earliest unsold wins)
+      for (const sku of skus) { const list = unsoldByRef[sku]; if (list && list.length) { setSale(list.shift()); matched++; done = true; break; } }
+      if (!done) unmatched++;
     });
   });
-  return { orders: orders.length, matched, unmatched, skippedUnpaid };
+  return { orders: orders.length, matched, updated, unmatched, skippedUnpaid };
 }
 
 // pull sold orders + fees, match by SKU, save
