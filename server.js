@@ -211,9 +211,11 @@ function applyEbayOrders(state, orders, feeByOrder) {
       const lineShare = orderTotal > 0 ? (lineTotal / orderTotal) : 1;
       const unitBroker = Math.round((f.broker * lineShare / qty) * 100) / 100;
       const unitShipping = Math.round((f.shipping * lineShare / qty) * 100) / 100;
+      const fstat = String(li.lineItemFulfillmentStatus || o.orderFulfillmentStatus || '').toUpperCase();
+      const shipped = fstat === 'FULFILLED';
       const g = groups[key] || (groups[key] = { refs, units: [], orderIds: new Set() });
       g.orderIds.add(o.orderId);
-      for (let u = 0; u < qty; u++) g.units.push({ price: unitPrice, broker: unitBroker, shipping: unitShipping, date, orderId: o.orderId });
+      for (let u = 0; u < qty; u++) g.units.push({ price: unitPrice, broker: unitBroker, shipping: unitShipping, date, orderId: o.orderId, shipped });
     });
   });
 
@@ -228,7 +230,7 @@ function applyEbayOrders(state, orders, feeByOrder) {
         const u = g.units[i];
         const wasEbay = it.sale && it.sale.ebayOrderId;
         it.status = 'sold';
-        it.sale = { broker: 'eBay', date: u.date, salePrice: u.price, saleAmount: u.price, fees: u.broker, shipping: u.shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: u.orderId };
+        it.sale = { broker: 'eBay', date: u.date, salePrice: u.price, saleAmount: u.price, fees: u.broker, shipping: u.shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: u.orderId, shipped: u.shipped };
         if (wasEbay) updated++; else matched++;
       } else if (it && it.sale && it.sale.ebayOrderId && g.orderIds.has(it.sale.ebayOrderId)) {
         // beyond the units sold, but we'd previously marked it sold for this listing -> revert (it's still active)
