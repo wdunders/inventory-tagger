@@ -2485,8 +2485,7 @@ function visibleRows(){
 function soldMeta(t,it){
   if(it.status!=='sold'||!it.sale||!it.sale.date)return '';
   const held=daysToSell(t,it);
-  const shipTag=it.sale.shipped===false?' · <span class="neg">🚚 ship now</span>':(it.sale.shipped===true?' · <span class="pos">shipped ✓</span>':'');
-  return `<div class="plest">Sold ${fmtDate(it.sale.date)}${held!=null?` · held ${held}d`:''} · ${daysSince(it.sale.date)}d ago${shipTag}</div>`;
+  return `<div class="plest">Sold ${fmtDate(it.sale.date)}${held!=null?` · held ${held}d`:''} · ${daysSince(it.sale.date)}d ago</div>`;
 }
 function plCellHtml(t,it){
   const pl=estPL(t,it);if(!pl)return '<span class="hint">—</span>';
@@ -2714,6 +2713,7 @@ function expTags(e){return (e.tags&&e.tags.length)?e.tags:(e.type?[e.type]:[]);}
 function ledgerByType(b){const o={};(state.expenses||[]).forEach(e=>{if(!b||inRange(e.date,b)){const k=expTags(e)[0]||'Other';o[k]=(o[k]||0)+num(e.amount);}});return o;}
 function ledgerTotal(b){return (state.expenses||[]).filter(e=>!b||inRange(e.date,b)).reduce((a,e)=>a+num(e.amount),0);}
 function purchasesAgg(b){let total=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))total+=Number(t.price)||0;});return total;}
+function invCostSplit(b){let sold=0,unsold=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))t.items.forEach(it=>{const c=itemCost(t,it);if(it.status==='sold')sold+=c;else unsold+=c;});});return {sold,unsold};}
 function renderIncomeStatement(){
   const key=document.getElementById('stmtRangeSel')?document.getElementById('stmtRangeSel').value:'all';
   const b=rangeBounds(key);
@@ -2726,8 +2726,10 @@ function renderIncomeStatement(){
   h+='<tr class="tot"><td>Gross sales</td><td class="r">'+money(A.gross)+'</td></tr>';
   vend.forEach(([v,a])=>h+=`<tr class="sub"><td>&nbsp;&nbsp;${esc(v)}</td><td class="r">${money(a)}</td></tr>`);
   if(!vend.length)h+='<tr class="sub"><td>&nbsp;&nbsp;No sales recorded yet</td><td class="r">—</td></tr>';
-  h+='<tr class="tot"><td>Inventory costs</td><td class="r"></td></tr>';
-  h+=`<tr class="sub"><td>&nbsp;&nbsp;Inventory purchased (incl. unsold)</td><td class="r">${money(purch)}</td></tr>`;
+  const ic=invCostSplit(b);
+  h+=`<tr class="tot"><td>Inventory costs</td><td class="r">${money(purch)}</td></tr>`;
+  h+=`<tr class="sub"><td>&nbsp;&nbsp;Sold item costs (COGS)</td><td class="r">${money(ic.sold)}</td></tr>`;
+  h+=`<tr class="sub"><td>&nbsp;&nbsp;Unsold item costs (held stock)</td><td class="r">${money(ic.unsold)}</td></tr>`;
   h+='<tr class="tot"><td>Selling fees</td><td class="r"></td></tr>';
   h+=`<tr class="sub"><td>&nbsp;&nbsp;Broker fees</td><td class="r">${money(A.feeBroker)}</td></tr>`;
   h+=`<tr class="sub"><td>&nbsp;&nbsp;Shipping</td><td class="r">${money(A.feeShip)}</td></tr>`;
@@ -2862,11 +2864,9 @@ function handleEbayReturn(){
   setTimeout(()=>{const el=document.getElementById('ebayMsg');if(el){el.textContent=m[p]||'';el.className='hint '+(p==='connected'?'pos':'neg');}},500);
   history.replaceState({},'',location.pathname);
 }
-function markShipped(tid,iid){const t=state.transactions.find(x=>x.id===tid);if(!t)return;const it=t.items.find(x=>x.id===iid);if(!it||!it.sale)return;it.sale.shipped=true;save();renderTodo();}
 function renderTodo(){
   const todos=[];
   flatItems().forEach(({t,it})=>{
-    if(it.status==='sold'&&hasSaleData(it)&&it.sale.shipped===false)todos.push({t,it,msg:'Sold — ship it to the buyer',act:'ship'});
     if(it.status==='sold'&&hasSaleData(it)&&!isLocalBroker(it.sale&&it.sale.broker)&&!(it.sale&&num(it.sale.shipping)>0))todos.push({t,it,msg:'Add the shipping cost you paid'});
     else if(it.status==='sold'&&!hasSaleData(it))todos.push({t,it,msg:'Add sale details (price & fees)'});
   });
@@ -2876,13 +2876,7 @@ function renderTodo(){
   let h='';
   if(!todos.length&&!inc){h='<div class="hint" style="padding:16px">All caught up — nothing needs attention 🎉</div>';}
   else{
-    h+=todos.map(({t,it,msg,act})=>{
-      const ship=act==='ship';
-      const click=ship?`markShipped('${t.id}','${it.id}')`:`openSale('${t.id}','${it.id}')`;
-      const badge=ship?'<span class="lbrank" style="background:#3b82f622;color:#7cb0ff">🚚</span>':'<span class="lbrank" style="background:#f59e0b22;color:#f6c065">!</span>';
-      const cta=ship?'Mark shipped ›':'Fix ›';
-      return `<div class="lbrow" style="cursor:pointer" onclick="${click}">${badge}<span class="lbimg">${it.img?`<img src="${it.img}">`:`<span class="lbph">${esc((it.label||'?').toUpperCase())}</span>`}</span><span class="lbname"><b>${esc(it.name)}</b><span class="hint">#${itemRef(t,it)} · ${esc(msg)}</span></span><span class="lbval" style="color:var(--accent)">${cta}</span></div>`;
-    }).join('');
+    h+=todos.map(({t,it,msg})=>`<div class="lbrow" style="cursor:pointer" onclick="openSale('${t.id}','${it.id}')"><span class="lbrank" style="background:#f59e0b22;color:#f6c065">!</span><span class="lbimg">${it.img?`<img src="${it.img}">`:`<span class="lbph">${esc((it.label||'?').toUpperCase())}</span>`}</span><span class="lbname"><b>${esc(it.name)}</b><span class="hint">#${itemRef(t,it)} · ${esc(msg)}</span></span><span class="lbval" style="color:var(--accent)">Fix ›</span></div>`).join('');
     if(inc)h+=`<div class="lbrow" style="cursor:pointer" onclick="filterToIncoming()"><span class="lbrank" style="background:#eab30822;color:#eab308">${inc}</span><span class="lbname"><b>Incoming items</b><span class="hint">paid, shipping to you — not received yet</span></span><span class="lbval" style="color:var(--accent)">View ›</span></div>`;
   }
   document.getElementById('homeTodo').innerHTML=h;
