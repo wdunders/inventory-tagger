@@ -2716,7 +2716,7 @@ function expTags(e){return (e.tags&&e.tags.length)?e.tags:(e.type?[e.type]:[]);}
 function ledgerByType(b){const o={};(state.expenses||[]).forEach(e=>{if(!b||inRange(e.date,b)){const k=expTags(e)[0]||'Other';o[k]=(o[k]||0)+num(e.amount);}});return o;}
 function ledgerTotal(b){return (state.expenses||[]).filter(e=>!b||inRange(e.date,b)).reduce((a,e)=>a+num(e.amount),0);}
 function purchasesAgg(b){let total=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))total+=Number(t.price)||0;});return total;}
-function invCostSplit(b){let sold=0,unsold=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))t.items.forEach(it=>{const c=itemCost(t,it);if(it.status==='sold')sold+=c;else unsold+=c;});});return {sold,unsold};}
+function invCostSplit(b){let sold=0,unsold=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))t.items.forEach(it=>{const c=itemCost(t,it);if(it.status==='sold'||hasSaleData(it))sold+=c;else unsold+=c;});});return {sold,unsold};}
 let stmtIncludeUnsold=true;
 function toggleUnsold(){stmtIncludeUnsold=!stmtIncludeUnsold;renderIncomeStatement();}
 function renderIncomeStatement(){
