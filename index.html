@@ -2071,11 +2071,14 @@
       <div class="card">
         <div class="ctrlrow">
           <div><h3>Income statement</h3><div class="sub">Cash basis: all inventory purchased counts as an expense (even unsold), plus selling fees &amp; ledger expenses, against gross sales — for the selected period.</div></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="fbtn on" id="unsoldToggle" onclick="toggleUnsold()" title="Include or exclude unsold (held) stock cost">Unsold items: on</button>
           <select class="rangesel" id="stmtRangeSel" onchange="renderIncomeStatement()">
             <option value="day">Last day</option><option value="week">Last week</option><option value="month">Last month</option>
             <option value="3m">Last 3 months</option><option value="6m">Last 6 months</option><option value="year">Last year</option>
             <option value="fy">This financial year</option><option value="all" selected="">All time</option>
           </select>
+          </div>
         </div>
         <div id="incomeStmt"></div>
       </div>
@@ -2714,22 +2717,27 @@ function ledgerByType(b){const o={};(state.expenses||[]).forEach(e=>{if(!b||inRa
 function ledgerTotal(b){return (state.expenses||[]).filter(e=>!b||inRange(e.date,b)).reduce((a,e)=>a+num(e.amount),0);}
 function purchasesAgg(b){let total=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))total+=Number(t.price)||0;});return total;}
 function invCostSplit(b){let sold=0,unsold=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))t.items.forEach(it=>{const c=itemCost(t,it);if(it.status==='sold')sold+=c;else unsold+=c;});});return {sold,unsold};}
+let stmtIncludeUnsold=true;
+function toggleUnsold(){stmtIncludeUnsold=!stmtIncludeUnsold;renderIncomeStatement();}
 function renderIncomeStatement(){
   const key=document.getElementById('stmtRangeSel')?document.getElementById('stmtRangeSel').value:'all';
   const b=rangeBounds(key);
   const A=salesAgg(b);const lt=ledgerByType(b);const purch=purchasesAgg(b);
+  const ic=invCostSplit(b);
+  const inv=stmtIncludeUnsold?purch:ic.sold;   // exclude held-stock cost when toggled off
   const vend=Object.entries(A.byVendor).sort((a,b)=>b[1]-a[1]);
-  const totalExp=purch+A.fees+ledgerTotal(b);
+  const totalExp=inv+A.fees+ledgerTotal(b);
   const net=A.gross-totalExp;
   const lgTot=ledgerTotal(b);
+  const tg=document.getElementById('unsoldToggle');if(tg){tg.textContent='Unsold items: '+(stmtIncludeUnsold?'on':'off');tg.classList.toggle('on',stmtIncludeUnsold);}
   let h='<table class="stmt"><tbody>';
   h+='<tr class="tot"><td>Gross sales</td><td class="r">'+money(A.gross)+'</td></tr>';
   vend.forEach(([v,a])=>h+=`<tr class="sub"><td>&nbsp;&nbsp;${esc(v)}</td><td class="r">${money(a)}</td></tr>`);
   if(!vend.length)h+='<tr class="sub"><td>&nbsp;&nbsp;No sales recorded yet</td><td class="r">—</td></tr>';
-  const ic=invCostSplit(b);
-  h+=`<tr class="tot"><td>Inventory costs</td><td class="r">${money(purch)}</td></tr>`;
+  h+=`<tr class="tot"><td>Inventory costs</td><td class="r">${money(inv)}</td></tr>`;
   h+=`<tr class="sub"><td>&nbsp;&nbsp;Sold item costs (COGS)</td><td class="r">${money(ic.sold)}</td></tr>`;
-  h+=`<tr class="sub"><td>&nbsp;&nbsp;Unsold item costs (held stock)</td><td class="r">${money(ic.unsold)}</td></tr>`;
+  if(stmtIncludeUnsold)h+=`<tr class="sub"><td>&nbsp;&nbsp;Unsold item costs (held stock)</td><td class="r">${money(ic.unsold)}</td></tr>`;
+  else h+=`<tr class="sub"><td>&nbsp;&nbsp;<span class="hint">Unsold item costs (excluded)</span></td><td class="r hint">(${money(ic.unsold)})</td></tr>`;
   h+='<tr class="tot"><td>Selling fees</td><td class="r"></td></tr>';
   h+=`<tr class="sub"><td>&nbsp;&nbsp;Broker fees</td><td class="r">${money(A.feeBroker)}</td></tr>`;
   h+=`<tr class="sub"><td>&nbsp;&nbsp;Shipping</td><td class="r">${money(A.feeShip)}</td></tr>`;
