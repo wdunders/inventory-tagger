@@ -202,20 +202,22 @@ function applyEbayOrders(state, orders, feeByOrder) {
     const orderTotal = Number((o.pricingSummary && o.pricingSummary.total && o.pricingSummary.total.value) || 0);
     const f = feeByOrder[o.orderId] || { broker: 0, shipping: 0 };
     (o.lineItems || []).forEach(li => {
-      const key = String(li.sku || '').trim().toLowerCase();
-      if (!key) return;
-      const refs = key.split(',').map(s => s.trim()).filter(Boolean);
+      const sku = String(li.sku || '').trim().toLowerCase();
+      if (!sku) return;
+      const skuRefs = sku.split(',').map(s => s.trim()).filter(Boolean);
+      // group by the eBay LISTING id (not the SKU text) so editing the custom
+      // label mid-listing still counts every sale as the same multi-qty listing
+      const key = String(li.legacyItemId || li.listingId || sku);
       const qty = Math.max(1, Number(li.quantity || 1));
       const lineTotal = Number((li.total && li.total.value) || (li.lineItemCost && li.lineItemCost.value) || 0);
       const unitPrice = Math.round((lineTotal / qty) * 100) / 100;
       const lineShare = orderTotal > 0 ? (lineTotal / orderTotal) : 1;
       const unitBroker = Math.round((f.broker * lineShare / qty) * 100) / 100;
       const unitShipping = Math.round((f.shipping * lineShare / qty) * 100) / 100;
-      const fstat = String(li.lineItemFulfillmentStatus || o.orderFulfillmentStatus || '').toUpperCase();
-      const shipped = fstat === 'FULFILLED';
-      const g = groups[key] || (groups[key] = { refs, units: [], orderIds: new Set() });
+      const g = groups[key] || (groups[key] = { refs: [], units: [], orderIds: new Set() });
+      skuRefs.forEach(r => { if (!g.refs.includes(r)) g.refs.push(r); });  // union of refs across all this listing's orders, in order
       g.orderIds.add(o.orderId);
-      for (let u = 0; u < qty; u++) g.units.push({ price: unitPrice, broker: unitBroker, shipping: unitShipping, date, orderId: o.orderId, shipped });
+      for (let u = 0; u < qty; u++) g.units.push({ price: unitPrice, broker: unitBroker, shipping: unitShipping, date, orderId: o.orderId });
     });
   });
 
@@ -230,7 +232,7 @@ function applyEbayOrders(state, orders, feeByOrder) {
         const u = g.units[i];
         const wasEbay = it.sale && it.sale.ebayOrderId;
         it.status = 'sold';
-        it.sale = { broker: 'eBay', date: u.date, salePrice: u.price, saleAmount: u.price, fees: u.broker, shipping: u.shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: u.orderId, shipped: u.shipped };
+        it.sale = { broker: 'eBay', date: u.date, salePrice: u.price, saleAmount: u.price, fees: u.broker, shipping: u.shipping || ((it.sale && it.sale.shipping) || 0), other: (it.sale && it.sale.other) || 0, ebayOrderId: u.orderId };
         if (wasEbay) updated++; else matched++;
       } else if (it && it.sale && it.sale.ebayOrderId && g.orderIds.has(it.sale.ebayOrderId)) {
         // beyond the units sold, but we'd previously marked it sold for this listing -> revert (it's still active)
