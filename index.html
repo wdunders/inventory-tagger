@@ -2073,6 +2073,7 @@
           <div><h3>Income statement</h3><div class="sub">Cash basis: all inventory purchased counts as an expense (even unsold), plus selling fees &amp; ledger expenses, against gross sales — for the selected period.</div></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button class="fbtn on" id="unsoldToggle" onclick="toggleUnsold()" title="Include or exclude unsold (held) stock cost">Unsold items: on</button>
+          <button class="fbtn" onclick="exportIncomeCSV()" title="Download this income statement as CSV">⤓ Export</button>
           <select class="rangesel" id="stmtRangeSel" onchange="renderIncomeStatement()">
             <option value="day">Last day</option><option value="week">Last week</option><option value="month">Last month</option>
             <option value="3m">Last 3 months</option><option value="6m">Last 6 months</option><option value="year">Last year</option>
@@ -2117,6 +2118,14 @@
       <div class="card" style="align-self:start;position:sticky;top:90px">
         <h3>Result</h3><div class="sub" id="c_planlabel"></div>
         <div id="calcResults"></div>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <h3>PayPal fee gross-up</h3><div class="sub">Cover the PayPal fee so the other person receives the full amount.</div>
+        <div class="grid2">
+          <div class="field"><label>Amount they should receive $</label><input id="pp_net" type="number" step="0.01" placeholder="0.00" oninput="computePaypal()"></div>
+          <div class="field"><label>PayPal fee %</label><input id="pp_pct" type="number" step="0.1" value="3" oninput="computePaypal()"></div>
+        </div>
+        <div id="pp_out" style="margin-top:6px"></div>
       </div>
     </div>
   </section>
@@ -2750,6 +2759,31 @@ function renderIncomeStatement(){
   h+='</tbody></table>';
   document.getElementById('incomeStmt').innerHTML=h;
 }
+function exportIncomeCSV(){
+  const key=document.getElementById('stmtRangeSel')?document.getElementById('stmtRangeSel').value:'all';
+  const b=rangeBounds(key);
+  const A=salesAgg(b),lt=ledgerByType(b),purch=purchasesAgg(b),ic=invCostSplit(b);
+  const inv=stmtIncludeUnsold?purch:ic.sold;
+  const lgTot=ledgerTotal(b);
+  const totalExp=inv+A.fees+lgTot;
+  const net=A.gross-totalExp;
+  const rows=[['Income statement'],['Period',PERIOD_LABELS[key]||key],['Unsold stock',stmtIncludeUnsold?'included':'excluded'],['Generated',new Date().toISOString().slice(0,10)],[],['Section','Line','Amount (AUD)']];
+  rows.push(['Gross sales','',A.gross.toFixed(2)]);
+  Object.entries(A.byVendor).sort((a,b)=>b[1]-a[1]).forEach(([v,a])=>rows.push(['','  '+v,a.toFixed(2)]));
+  rows.push(['Inventory costs','',inv.toFixed(2)]);
+  rows.push(['','  Sold item costs (COGS)',ic.sold.toFixed(2)]);
+  rows.push(['','  Unsold item costs (held stock)'+(stmtIncludeUnsold?'':' — excluded'),ic.unsold.toFixed(2)]);
+  rows.push(['Selling fees','',A.fees.toFixed(2)]);
+  rows.push(['','  Broker fees',A.feeBroker.toFixed(2)]);
+  rows.push(['','  Shipping',A.feeShip.toFixed(2)]);
+  rows.push(['','  Other',A.feeOther.toFixed(2)]);
+  rows.push(['Ledger expenses','',lgTot.toFixed(2)]);
+  Object.entries(lt).sort((a,b)=>b[1]-a[1]).forEach(([k,a])=>rows.push(['','  '+k,a.toFixed(2)]));
+  rows.push(['Total expenses','',totalExp.toFixed(2)]);
+  rows.push(['Net profit','',net.toFixed(2)]);
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='income-statement-'+key+'-'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+}
 function auFYStart(iso){const d=new Date(iso+'T00:00:00');const y=d.getFullYear(),m=d.getMonth()+1;return m>=7?y:y-1;}
 function fyLabel(s){return `FY ${s}–${String(s+1).slice(2)}`;}
 // estimated income tax on a taxable amount, ATO resident brackets 2025-26 (excl. Medicare levy & offsets)
@@ -2925,6 +2959,20 @@ function renderCalc(){
     calcInit=true;
   }
   computeCalc();
+  computePaypal();
+}
+function computePaypal(){
+  const out=document.getElementById('pp_out');if(!out)return;
+  const ne=document.getElementById('pp_net'), pe=document.getElementById('pp_pct');
+  const net=ne?num(ne.value):0;
+  let pct=pe?num(pe.value):3; if(pct>=100)pct=0;
+  const send=(net>0)?net/(1-pct/100):0;
+  const fee=send-net;
+  out.innerHTML=net>0
+    ?`<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><span>They receive</span><span>${money(net)}</span></div>`
+     +`<div style="display:flex;justify-content:space-between;padding:6px 0;color:var(--muted)"><span>PayPal fee (${(pct||0)}%)</span><span class="neg">+${money(fee)}</span></div>`
+     +`<div style="display:flex;justify-content:space-between;padding:9px 0 2px;border-top:1px solid var(--line);font-weight:800;font-size:19px"><span>You send</span><span class="pos">${money(send)}</span></div>`
+    :'<div class="hint">Enter the amount they should receive.</div>';
 }
 function fillPlan(){computeCalc();
 }
