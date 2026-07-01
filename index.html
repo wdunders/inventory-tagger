@@ -2075,15 +2075,15 @@
           <button class="fbtn on" id="unsoldToggle" onclick="toggleUnsold()" title="Include or exclude unsold (held) stock cost">Unsold items: on</button>
           <button class="fbtn" onclick="exportIncomeCSV()" title="Download this income statement as CSV">⤓ Export</button>
           <select class="rangesel" id="stmtRangeSel" onchange="renderIncomeStatement()">
-            <option value="day">Last day</option><option value="week">Last week</option><option value="month">Last month</option>
-            <option value="3m">Last 3 months</option><option value="6m">Last 6 months</option><option value="year">Last year</option>
-            <option value="fy">This financial year</option><option value="all" selected="">All time</option>
+            <option value="fy">This financial year</option>
+            <option value="lastfy">Last financial year</option>
+            <option value="all" selected="">All time</option>
           </select>
           </div>
         </div>
         <div id="incomeStmt"></div>
       </div>
-      <div class="card"><h3>Tax report — Australian financial years (1 Jul – 30 Jun)</h3><div class="sub">Sales &amp; COGS recognised on sale date. Excludes GST. Not tax advice.</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 10px"><label class="hint" for="taxBaseIncome">Other taxable income (from your other jobs), per year:</label><span class="hint">$</span><input id="taxBaseIncome" type="number" min="0" class="rangesel" style="width:130px" placeholder="0" oninput="setBaseIncome(this.value)"></div><div id="taxReport"></div></div>
+      <div class="card"><h3>Tax report — Australian financial years (1 Jul – 30 Jun)</h3><div class="sub">Sales &amp; COGS recognised on sale date. Enter your other taxable income per year in the table. Excludes GST. Not tax advice.</div><div id="taxReport"></div></div>
       <div class="card full">
         <h3>Expense ledger</h3><div class="sub">External / overhead expenses — tracked here only, kept out of the Insights charts.</div>
         <div class="expform">
@@ -2265,6 +2265,7 @@ function rangeBounds(key,cf,ct){
     case '6m':d.setMonth(d.getMonth()-6);from=iso(d);break;
     case 'year':d.setFullYear(d.getFullYear()-1);from=iso(d);break;
     case 'fy':{const y=today.getFullYear(),m=today.getMonth()+1,s=m>=7?y:y-1;return {from:`${s}-07-01`,to:`${s+1}-06-30`};}
+    case 'lastfy':{const y=today.getFullYear(),m=today.getMonth()+1,s=(m>=7?y:y-1)-1;return {from:`${s}-07-01`,to:`${s+1}-06-30`};}
     default:return {from:null,to:null};
   }
   return {from,to};
@@ -2423,7 +2424,7 @@ function renderStats(){
     <div class="stat"><div class="n">${money0(invValue)}</div><div class="l">Inventory value</div></div>
     <div class="stat"><div class="n ${pending>=0?'pos':'neg'}">${money0(pending)}</div><div class="l">Pending profit</div></div>`;
 }
-const PERIOD_LABELS={all:'All time',day:'Last day',week:'Last week',month:'Last month','3m':'Last 3 months','6m':'Last 6 months',year:'Last year',fy:'Financial year'};
+const PERIOD_LABELS={all:'All time',day:'Last day',week:'Last week',month:'Last month','3m':'Last 3 months','6m':'Last 6 months',year:'Last year',fy:'This financial year',lastfy:'Last financial year'};
 function renderFilters(){
   const sLbl=filterStatuses.size?`Status · ${filterStatuses.size}`:'Status';
   const tLbl=filterCats.size?`Type · ${filterCats.size}`:'Type';
@@ -2794,21 +2795,22 @@ function estIncomeTax(taxable){
   }
   return tax;
 }
-function setBaseIncome(v){state.baseIncome=(v===''||v==null)?0:num(v);save();renderTaxReport();}
+function fyBase(s){const b=state.baseIncomeFY&&state.baseIncomeFY[s];return Number(b)||0;}
+function setFYBase(s,v){if(!state.baseIncomeFY)state.baseIncomeFY={};state.baseIncomeFY[s]=(v===''||v==null)?0:num(v);save();renderTaxReport();}
 function renderTaxReport(){
-  const base=Number(state.baseIncome)||0;
-  const bi=document.getElementById('taxBaseIncome');if(bi&&document.activeElement!==bi)bi.value=base?base:'';
+  if(state.baseIncome!=null&&!state.baseIncomeFY){const d=new Date(),cur=(d.getMonth()+1)>=7?d.getFullYear():d.getFullYear()-1;state.baseIncomeFY={[cur]:Number(state.baseIncome)||0};delete state.baseIncome;save();}
   const fy={};const ens=s=>fy[s]||(fy[s]={income:0,cogs:0,fees:0,exp:0});
   state.transactions.forEach(t=>t.items.forEach(it=>{if(hasSaleData(it)&&it.sale.date){const s=auFYStart(it.sale.date);ens(s);fy[s].income+=saleGross(it);fy[s].cogs+=itemCost(t,it);fy[s].fees+=saleFees(it);}}));
   (state.expenses||[]).forEach(e=>{if(e.date){const s=auFYStart(e.date);ens(s);fy[s].exp+=num(e.amount);}});
-  const years=Object.keys(fy).map(Number).sort();
-  const taxHead=base>0?'Extra tax':'Est. tax';
-  let h='<table class="stmt"><thead><tr><td>Financial year</td><td class="r">Gross sales</td><td class="r">COGS</td><td class="r">Fees</td><td class="r">Deductions</td><td class="r">Net (taxable)</td><td class="r">'+taxHead+'</td></tr></thead><tbody>';
-  if(!years.length)h+='<tr class="sub"><td colspan="7">No dated sales or expenses yet.</td></tr>';
-  years.forEach(s=>{const r=fy[s];const net=r.income-r.cogs-r.fees-r.exp;const tax=estIncomeTax(base+net)-estIncomeTax(base);h+=`<tr><td>${fyLabel(s)}</td><td class="r">${money(r.income)}</td><td class="r">${money(r.cogs)}</td><td class="r">${money(r.fees)}</td><td class="r">${money(r.exp)}</td><td class="r ${net>=0?'pos':'neg'}">${money(net)}</td><td class="r">${money(tax)}</td></tr>`;});
-  h+='</tbody></table><div class="hint" style="margin-top:8px">'+(base>0
-    ?'“Extra tax” is the additional tax on this activity’s net <em>on top of</em> your other income ($'+money0(base).replace('$','')+'/yr), at your 2025–26 ATO resident marginal rate.'
-    :'Est. tax applies 2025–26 ATO resident brackets to this activity’s net, assuming it is your only taxable income. Add your other income above for a marginal estimate.')+' Excludes the Medicare levy, offsets &amp; GST — a rough guide, not tax advice.</div>';
+  const dataYears=Object.keys(fy).map(Number);
+  const now=new Date();const curFY=(now.getMonth()+1)>=7?now.getFullYear():now.getFullYear()-1;
+  const start=dataYears.length?Math.min(...dataYears,curFY):curFY;
+  const end=dataYears.length?Math.max(...dataYears,curFY):curFY;
+  const years=[];for(let y=start;y<=end;y++){ens(y);years.push(y);}   // every FY from first record to the current one, incl. empty ones
+  let h='<table class="stmt"><thead><tr><td>Financial year</td><td class="r">Gross sales</td><td class="r">COGS</td><td class="r">Fees</td><td class="r">Deductions</td><td class="r">Net (taxable)</td><td class="r">Other income</td><td class="r">Est. tax</td></tr></thead><tbody>';
+  years.forEach(s=>{const r=fy[s];const net=r.income-r.cogs-r.fees-r.exp;const base=fyBase(s);const tax=estIncomeTax(base+net)-estIncomeTax(base);
+    h+=`<tr><td>${fyLabel(s)}</td><td class="r">${money(r.income)}</td><td class="r">${money(r.cogs)}</td><td class="r">${money(r.fees)}</td><td class="r">${money(r.exp)}</td><td class="r ${net>=0?'pos':'neg'}">${money(net)}</td><td class="r"><input type="number" min="0" class="rangesel" style="width:100px;text-align:right" placeholder="0" value="${base?base:''}" onchange="setFYBase(${s},this.value)"></td><td class="r">${money(tax)}</td></tr>`;});
+  h+='</tbody></table><div class="hint" style="margin-top:8px">“Est. tax” is the tax on this activity’s net for that year. Enter your other taxable income (wages etc.) for a year and it becomes the <em>extra</em> tax on top of that income, at your 2025–26 ATO resident marginal rate. Excludes the Medicare levy, offsets &amp; GST — a rough guide, not tax advice.</div>';
   document.getElementById('taxReport').innerHTML=h;
 }
 function allExpTags(){const s=new Set();(state.expenses||[]).forEach(e=>expTags(e).forEach(t=>s.add(t)));return [...s].sort();}
