@@ -2237,6 +2237,7 @@ const STATUSES = [
   {id:'unlisted', label:'Unlisted', color:'var(--unlisted)', raw:'#f59e0b'},
   {id:'listed',   label:'Listed',   color:'var(--listed)',   raw:'#a855f7'},
   {id:'sold',     label:'Sold',     color:'var(--sold)',     raw:'#22c55e'},
+  {id:'void',     label:'Void',     color:'#64748b',          raw:'#64748b'},
 ];
 const STATUS = Object.fromEntries(STATUSES.map(s=>[s.id,s]));
 const PALETTE = ['#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899','#f472b6'];
@@ -2416,7 +2417,7 @@ const COLS=[
 function renderStats(){
   const counts={incoming:0,unlisted:0,listed:0,sold:0};let totalSpend=0,itemCount=0,invValue=0,pending=0;
   state.transactions.forEach(t=>{totalSpend+=Number(t.price)||0;t.items.forEach(it=>{counts[it.status]=(counts[it.status]||0)+1;itemCount++;
-    if(it.status!=='sold'){invValue+=itemCost(t,it);if(it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));}});});
+    if(it.status!=='sold'&&it.status!=='void'){invValue+=itemCost(t,it);if(it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));}});});
   document.getElementById('stats').innerHTML=`
     <div class="stat"><div class="n">${state.transactions.length}</div><div class="l">Transactions</div></div>
     <div class="stat"><div class="n">${itemCount}</div><div class="l">Items</div></div>
@@ -2604,12 +2605,12 @@ function typeSpend(){const out={};state.transactions.forEach(t=>t.items.forEach(
 function typeCount(){const out={};flatItems().forEach(({it})=>{const c=primaryType(it);out[c]=(out[c]||0)+1;});return out;}
 function soldStats(){
   let rev=0,fees=0,cost=0,profit=0,n=0,days=0,daysN=0,totalItems=0;
-  state.transactions.forEach(t=>t.items.forEach(it=>{totalItems++;if(it.status==='sold')n++;if(hasSaleData(it)){rev+=saleGross(it);fees+=saleFees(it);cost+=itemCost(t,it);profit+=saleProfit(t,it);const d=daysToSell(t,it);if(d!=null){days+=d;daysN++;}}}));
+  state.transactions.forEach(t=>t.items.forEach(it=>{if(it.status!=='void')totalItems++;if(it.status==='sold')n++;if(hasSaleData(it)){rev+=saleGross(it);fees+=saleFees(it);cost+=itemCost(t,it);profit+=saleProfit(t,it);const d=daysToSell(t,it);if(d!=null){days+=d;daysN++;}}}));
   return {rev,fees,cost,profit,n,margin:rev>0?profit/rev*100:0,sellThrough:totalItems?n/totalItems*100:0,avgDays:daysN?days/daysN:null};
 }
 function renderInsightStats(){
-  let total=0,items=0,pending=0;state.transactions.forEach(t=>{total+=Number(t.price)||0;items+=t.items.length;t.items.forEach(it=>{if(it.status!=='sold'&&it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));});});
-  const ts=typeSpend();const S=soldStats();const unsoldCost=Object.values(ts).reduce((a,b)=>a+b,0)-S.cost;
+  let total=0,items=0,pending=0;state.transactions.forEach(t=>{total+=Number(t.price)||0;items+=t.items.length;t.items.forEach(it=>{if(it.status!=='sold'&&it.status!=='void'&&it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));});});
+  const S=soldStats();const unsoldCost=invCostSplit(null).unsold;
   const sdates=[];flatItems().forEach(({it})=>{if(hasSaleData(it)&&it.sale.date)sdates.push(it.sale.date);});
   let avgPM=null;if(sdates.length){sdates.sort();const a=new Date(sdates[0]+'T00:00:00'),z=new Date(sdates[sdates.length-1]+'T00:00:00');const months=(z.getFullYear()-a.getFullYear())*12+(z.getMonth()-a.getMonth())+1;avgPM=S.profit/Math.max(1,months);}
   document.getElementById('insightStats').innerHTML=`
@@ -2726,7 +2727,7 @@ function expTags(e){return (e.tags&&e.tags.length)?e.tags:(e.type?[e.type]:[]);}
 function ledgerByType(b){const o={};(state.expenses||[]).forEach(e=>{if(!b||inRange(e.date,b)){const k=expTags(e)[0]||'Other';o[k]=(o[k]||0)+num(e.amount);}});return o;}
 function ledgerTotal(b){return (state.expenses||[]).filter(e=>!b||inRange(e.date,b)).reduce((a,e)=>a+num(e.amount),0);}
 function purchasesAgg(b){let total=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))total+=Number(t.price)||0;});return total;}
-function invCostSplit(b){let sold=0,unsold=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))t.items.forEach(it=>{const c=itemCost(t,it);if(it.status==='sold'||hasSaleData(it))sold+=c;else unsold+=c;});});return {sold,unsold};}
+function invCostSplit(b){let sold=0,unsold=0;state.transactions.forEach(t=>{if(!b||inRange(t.date,b))t.items.forEach(it=>{const c=itemCost(t,it);if(it.status==='sold'||hasSaleData(it))sold+=c;else if(it.status!=='void')unsold+=c;});});return {sold,unsold};}
 let stmtIncludeUnsold=true;
 function toggleUnsold(){stmtIncludeUnsold=!stmtIncludeUnsold;renderIncomeStatement();}
 function renderIncomeStatement(){
@@ -2734,7 +2735,7 @@ function renderIncomeStatement(){
   const b=rangeBounds(key);
   const A=salesAgg(b);const lt=ledgerByType(b);const purch=purchasesAgg(b);
   const ic=invCostSplit(b);
-  const inv=stmtIncludeUnsold?purch:ic.sold;   // exclude held-stock cost when toggled off
+  const inv=ic.sold+(stmtIncludeUnsold?ic.unsold:0);   // sold + (held stock if on); Void items excluded
   const vend=Object.entries(A.byVendor).sort((a,b)=>b[1]-a[1]);
   const totalExp=inv+A.fees+ledgerTotal(b);
   const net=A.gross-totalExp;
@@ -2763,8 +2764,8 @@ function renderIncomeStatement(){
 function exportIncomeCSV(){
   const key=document.getElementById('stmtRangeSel')?document.getElementById('stmtRangeSel').value:'all';
   const b=rangeBounds(key);
-  const A=salesAgg(b),lt=ledgerByType(b),purch=purchasesAgg(b),ic=invCostSplit(b);
-  const inv=stmtIncludeUnsold?purch:ic.sold;
+  const A=salesAgg(b),lt=ledgerByType(b),ic=invCostSplit(b);
+  const inv=ic.sold+(stmtIncludeUnsold?ic.unsold:0);
   const lgTot=ledgerTotal(b);
   const totalExp=inv+A.fees+lgTot;
   const net=A.gross-totalExp;
@@ -2823,7 +2824,7 @@ function renderExpenses(){
   const tags=allExpTags();
   let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
     <select class="rangesel" onchange="ledgerTag=this.value;renderExpenses()"><option value="">All tags</option>${tags.map(t=>`<option ${ledgerTag===t?'selected':''}>${esc(t)}</option>`).join('')}</select>
-    <select class="rangesel" onchange="ledgerPeriod=this.value;renderExpenses()">${Object.entries(PERIOD_LABELS).map(([k,l])=>`<option value="${k}" ${ledgerPeriod===k?'selected':''}>${l}</option>`).join('')}</select>
+    <select class="rangesel" onchange="ledgerPeriod=this.value;renderExpenses()">${['fy','lastfy','all'].map(k=>`<option value="${k}" ${ledgerPeriod===k?'selected':''}>${PERIOD_LABELS[k]}</option>`).join('')}</select>
   </div>`;
   h+='<table class="stmt"><thead><tr><td>Date</td><td>Description</td><td>Tags</td><td>Vendor</td><td class="r">Amount</td><td></td></tr></thead><tbody>';
   if(!list.length)h+='<tr class="sub"><td colspan="6">No expenses match.</td></tr>';
@@ -2915,17 +2916,21 @@ function renderTodo(){
     else if(it.status==='sold'&&!hasSaleData(it))todos.push({t,it,msg:'Add sale details (price & fees)'});
   });
   const inc=flatItems().filter(({it})=>it.status==='incoming').length;
+  const unl=flatItems().filter(({it})=>it.status==='unlisted').length;
   const cc=document.getElementById('todoCount');
-  if(cc)cc.textContent=todos.length?`${todos.length} item${todos.length===1?'':'s'} needing attention`:(inc?`All caught up · ${inc} incoming`:'All caught up 🎉');
+  const extra=[inc?`${inc} incoming`:'',unl?`${unl} unlisted`:''].filter(Boolean).join(' · ');
+  if(cc)cc.textContent=todos.length?`${todos.length} item${todos.length===1?'':'s'} needing attention`:(extra?`All caught up · ${extra}`:'All caught up 🎉');
   let h='';
-  if(!todos.length&&!inc){h='<div class="hint" style="padding:16px">All caught up — nothing needs attention 🎉</div>';}
+  if(!todos.length&&!inc&&!unl){h='<div class="hint" style="padding:16px">All caught up — nothing needs attention 🎉</div>';}
   else{
     h+=todos.map(({t,it,msg})=>`<div class="lbrow" style="cursor:pointer" onclick="openSale('${t.id}','${it.id}')"><span class="lbrank" style="background:#f59e0b22;color:#f6c065">!</span><span class="lbimg">${it.img?`<img src="${it.img}">`:`<span class="lbph">${esc((it.label||'?').toUpperCase())}</span>`}</span><span class="lbname"><b>${esc(it.name)}</b><span class="hint">#${itemRef(t,it)} · ${esc(msg)}</span></span><span class="lbval" style="color:var(--accent)">Fix ›</span></div>`).join('');
+    if(unl)h+=`<div class="lbrow" style="cursor:pointer" onclick="filterToUnlisted()"><span class="lbrank" style="background:#f59e0b22;color:#f59e0b">${unl}</span><span class="lbname"><b>Unlisted items</b><span class="hint">in hand — not listed for sale yet</span></span><span class="lbval" style="color:var(--accent)">View ›</span></div>`;
     if(inc)h+=`<div class="lbrow" style="cursor:pointer" onclick="filterToIncoming()"><span class="lbrank" style="background:#eab30822;color:#eab308">${inc}</span><span class="lbname"><b>Incoming items</b><span class="hint">paid, shipping to you — not received yet</span></span><span class="lbval" style="color:var(--accent)">View ›</span></div>`;
   }
   document.getElementById('homeTodo').innerHTML=h;
 }
 function filterToIncoming(){filterStatuses=new Set(['incoming']);filterCats=new Set();filterPeriod='all';switchPage('inv');}
+function filterToUnlisted(){filterStatuses=new Set(['unlisted']);filterCats=new Set();filterPeriod='all';switchPage('inv');}
 function renderHomeChart(){
   if(typeof Chart==='undefined')return;
   const sold=flatItems().filter(r=>hasSaleData(r.it));
