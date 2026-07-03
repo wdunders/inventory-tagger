@@ -2612,11 +2612,11 @@ function renderInsightStats(){
   let total=0,items=0,pending=0;state.transactions.forEach(t=>{total+=Number(t.price)||0;items+=t.items.length;t.items.forEach(it=>{if(it.status!=='sold'&&it.status!=='void'&&it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));});});
   const S=soldStats();const unsoldCost=invCostSplit(null).unsold;
   const sdates=[];flatItems().forEach(({it})=>{if(hasSaleData(it)&&it.sale.date)sdates.push(it.sale.date);});
-  let avgPM=null;if(sdates.length){sdates.sort();const a=new Date(sdates[0]+'T00:00:00'),z=new Date(sdates[sdates.length-1]+'T00:00:00');const months=(z.getFullYear()-a.getFullYear())*12+(z.getMonth()-a.getMonth())+1;avgPM=S.profit/Math.max(1,months);}
+  let avgPW=null;if(sdates.length){sdates.sort();const first=new Date(sdates[0]+'T00:00:00');const weeks=Math.max(1,(Date.now()-first.getTime())/(7*24*3600*1000));avgPW=S.profit/weeks;}
   document.getElementById('insightStats').innerHTML=`
     <div class="stat"><div class="n">${money0(S.rev)}</div><div class="l">Gross sales</div></div>
     <div class="stat"><div class="n ${S.profit>=0?'pos':'neg'}">${money0(S.profit)}</div><div class="l">Net profit</div></div>
-    <div class="stat"><div class="n ${avgPM==null||avgPM>=0?'pos':'neg'}">${avgPM==null?'—':money0(avgPM)}</div><div class="l">Avg profit / month</div></div>
+    <div class="stat"><div class="n ${avgPW==null||avgPW>=0?'pos':'neg'}">${avgPW==null?'—':money0(avgPW)}</div><div class="l">Avg profit / week</div></div>
     <div class="stat"><div class="n">${S.margin.toFixed(0)}%</div><div class="l">Avg margin</div></div>
     <div class="stat"><div class="n">${S.n}</div><div class="l">Items sold</div></div>
     <div class="stat"><div class="n">${S.sellThrough.toFixed(0)}%</div><div class="l">Sell-through</div></div>
