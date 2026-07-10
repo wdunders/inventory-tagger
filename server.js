@@ -29,6 +29,7 @@ async function initDB() {
     });
     await pool.query('CREATE TABLE IF NOT EXISTS app_state (id INT PRIMARY KEY, data JSONB, updated_at TIMESTAMPTZ DEFAULT now())');
     await pool.query('CREATE TABLE IF NOT EXISTS ebay_tokens (id INT PRIMARY KEY, refresh_token TEXT, access_token TEXT, expires_at BIGINT)');
+    await pool.query('CREATE TABLE IF NOT EXISTS backups (id SERIAL PRIMARY KEY, ts TIMESTAMPTZ DEFAULT now(), data JSONB)');
     console.log('Postgres connected.');
   } else {
     console.warn('!! No DATABASE_URL set — using in-memory store. Data will NOT survive a restart. (Fine for local testing.)');
@@ -70,6 +71,7 @@ app.put('/api/state', auth, async (req, res) => {
   if (!data || typeof data !== 'object') return res.status(400).json({ error: 'no data' });
   try {
     if (pool) {
+      await snapshotBackup();
       await pool.query(
         'INSERT INTO app_state (id, data, updated_at) VALUES (1, $1, now()) ON CONFLICT (id) DO UPDATE SET data = $1, updated_at = now()',
         [data]
@@ -82,6 +84,30 @@ app.put('/api/state', auth, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'save failed' });
   }
+});
+
+// list recent auto-backups (browser: ?pw=YOURCODE)
+app.get('/api/backups', async (req, res) => {
+  if (!(req.headers['x-auth'] === TOKEN || passwordOk(req.query.pw))) return res.status(401).json({ error: 'unauthorized — add ?pw=YOURCODE' });
+  if (!pool) return res.json({ backups: [] });
+  try {
+    const r = await pool.query('SELECT id, ts, jsonb_array_length(COALESCE(data->\'transactions\',\'[]\'::jsonb)) AS deals FROM backups ORDER BY ts DESC LIMIT 72');
+    res.json({ backups: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// download one backup as JSON (browser: ?pw=YOURCODE  or &id=123 ; defaults to latest)
+app.get('/api/backup', async (req, res) => {
+  if (!(req.headers['x-auth'] === TOKEN || passwordOk(req.query.pw))) return res.status(401).json({ error: 'unauthorized — add ?pw=YOURCODE' });
+  if (!pool) return res.status(400).json({ error: 'no database' });
+  try {
+    const id = req.query.id;
+    const r = (id && id !== 'latest')
+      ? await pool.query('SELECT data FROM backups WHERE id=$1', [id])
+      : await pool.query('SELECT data FROM backups ORDER BY ts DESC LIMIT 1');
+    if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
+    res.setHeader('Content-Disposition', 'attachment; filename="williams-backup.json"');
+    res.json(r.rows[0].data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ===================== eBay integration (Phase 2) ===================== */
@@ -105,8 +131,22 @@ async function loadStateInternal() {
   if (pool) { const r = await pool.query('SELECT data FROM app_state WHERE id=1'); return r.rows[0] ? r.rows[0].data : null; }
   return mem;
 }
+// snapshot the CURRENT stored state into backups (throttled ~hourly, keeps last 72) so any
+// bad overwrite is always recoverable
+async function snapshotBackup() {
+  if (!pool) return;
+  try {
+    const last = await pool.query('SELECT ts FROM backups ORDER BY ts DESC LIMIT 1');
+    const lastMs = last.rows[0] ? new Date(last.rows[0].ts).getTime() : 0;
+    if (Date.now() - lastMs < 55 * 60 * 1000) return;
+    const cur = await pool.query('SELECT data FROM app_state WHERE id=1');
+    if (!cur.rows[0] || !cur.rows[0].data) return;
+    await pool.query('INSERT INTO backups(data) VALUES($1)', [cur.rows[0].data]);
+    await pool.query('DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY ts DESC LIMIT 72)');
+  } catch (e) { console.error('backup:', e.message); }
+}
 async function saveStateInternal(d) {
-  if (pool) { await pool.query('INSERT INTO app_state(id,data,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET data=$1,updated_at=now()', [d]); }
+  if (pool) { await snapshotBackup(); await pool.query('INSERT INTO app_state(id,data,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET data=$1,updated_at=now()', [d]); }
   else mem = d;
 }
 function ebayBasicAuth() { return 'Basic ' + Buffer.from(EBAY_CLIENT_ID + ':' + EBAY_CLIENT_SECRET).toString('base64'); }

@@ -3244,17 +3244,20 @@ function applyTheme(t){document.body.setAttribute('data-theme',t);const b=docume
 function toggleTheme(){applyTheme((localStorage.getItem('it_theme')||'dark')==='dark'?'light':'dark');}
 async function bootHosted(){
   if(!AUTH){showLogin();return;}
-  let fromServer=false;
+  let fromServer=false, serverOk=false;
   try{
     const r=await api('GET','/api/state');const j=await r.json();
+    serverOk=true;
     if(j&&j.data&&Array.isArray(j.data.transactions)){state=j.data;fromServer=true;}
-  }catch(e){if(e.message==='unauth')return;}
+  }catch(e){if(e.message==='unauth')return;serverOk=false;}
   if(!fromServer){
     if(!load()||!Array.isArray(state.transactions)){state=JSON.parse(JSON.stringify(EMBEDDED_DATA));}
   }
   migrate();
   try{localStorage.setItem(KEY,JSON.stringify(state));}catch(_){}
-  if(!fromServer&&AUTH)serverSave();   // seed the cloud on first run
+  // Only seed the cloud when the server actually responded AND was genuinely empty (true first run).
+  // If the fetch failed (serverOk=false), NEVER write back — that would overwrite good cloud data with the local fallback.
+  if(serverOk&&!fromServer&&AUTH)serverSave();
   switchPage('home');
 }
 applyTheme(localStorage.getItem('it_theme')||'dark');
