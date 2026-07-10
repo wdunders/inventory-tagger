@@ -2026,8 +2026,8 @@
               <option value="fy">This financial year</option><option value="all" selected="">All time</option><option value="custom">Custom range…</option>
             </select>
             <span id="lineCustom" style="display:none;gap:6px;align-items:center">
-              <input type="date" id="lineFrom" class="rangesel" onchange="renderLine()">
-              <input type="date" id="lineTo" class="rangesel" onchange="renderLine()">
+              <input type="date" id="lineFrom" class="rangesel" onchange="renderLine();renderInsightStats()">
+              <input type="date" id="lineTo" class="rangesel" onchange="renderLine();renderInsightStats()">
             </span>
           </div>
         </div>
@@ -2415,15 +2415,18 @@ const COLS=[
   {key:'status',label:'Status'},{key:'cost',label:'Cost'},{key:'pl',label:'P / L',nosort:true},{key:'sold',label:'Sold',nosort:true},{key:'act',label:'',nosort:true},
 ];
 function renderStats(){
-  const counts={incoming:0,unlisted:0,listed:0,sold:0};let totalSpend=0,itemCount=0,invValue=0,pending=0;
+  const counts={incoming:0,unlisted:0,listed:0,sold:0};let totalSpend=0,itemCount=0,invValue=0,pending=0,days=0,daysN=0;
   state.transactions.forEach(t=>{totalSpend+=Number(t.price)||0;t.items.forEach(it=>{counts[it.status]=(counts[it.status]||0)+1;itemCount++;
-    if(it.status!=='sold'&&it.status!=='void'){invValue+=itemCost(t,it);if(it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));}});});
+    if(it.status!=='sold'&&it.status!=='void'){invValue+=itemCost(t,it);if(it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));}
+    if(hasSaleData(it)){const d=daysToSell(t,it);if(d!=null){days+=d;daysN++;}}});});
+  const avgDays=daysN?Math.round(days/daysN):null;
   document.getElementById('stats').innerHTML=`
     <div class="stat"><div class="n">${state.transactions.length}</div><div class="l">Transactions</div></div>
     <div class="stat"><div class="n">${itemCount}</div><div class="l">Items</div></div>
     <div class="stat"><div class="n">${money0(totalSpend)}</div><div class="l">Total spend</div></div>
     <div class="stat"><div class="n">${money0(invValue)}</div><div class="l">Inventory value</div></div>
-    <div class="stat"><div class="n ${pending>=0?'pos':'neg'}">${money0(pending)}</div><div class="l">Pending profit</div></div>`;
+    <div class="stat"><div class="n ${pending>=0?'pos':'neg'}">${money0(pending)}</div><div class="l">Pending profit</div></div>
+    <div class="stat"><div class="n">${avgDays!=null?avgDays+'d':'—'}</div><div class="l">Avg days to sell</div></div>`;
 }
 const PERIOD_LABELS={all:'All time',day:'Last day',week:'Last week',month:'Last month','3m':'Last 3 months','6m':'Last 6 months',year:'Last year',fy:'This financial year',lastfy:'Last financial year'};
 function renderFilters(){
@@ -2609,27 +2612,33 @@ function periodLabel(key,mode){mode=mode||period;
 }
 function typeSpend(){const out={};state.transactions.forEach(t=>t.items.forEach(it=>{const c=primaryType(it);out[c]=(out[c]||0)+itemCost(t,it);}));return out;}
 function typeCount(){const out={};flatItems().forEach(({it})=>{const c=primaryType(it);out[c]=(out[c]||0)+1;});return out;}
-function soldStats(){
-  let rev=0,fees=0,cost=0,profit=0,n=0,days=0,daysN=0,totalItems=0;
-  state.transactions.forEach(t=>t.items.forEach(it=>{if(it.status!=='void')totalItems++;if(it.status==='sold')n++;if(hasSaleData(it)){rev+=saleGross(it);fees+=saleFees(it);cost+=itemCost(t,it);profit+=saleProfit(t,it);const d=daysToSell(t,it);if(d!=null){days+=d;daysN++;}}}));
-  return {rev,fees,cost,profit,n,margin:rev>0?profit/rev*100:0,sellThrough:totalItems?n/totalItems*100:0,avgDays:daysN?days/daysN:null};
+function soldStats(b){
+  let rev=0,fees=0,cost=0,profit=0,n=0,days=0,daysN=0;
+  state.transactions.forEach(t=>t.items.forEach(it=>{
+    if(hasSaleData(it)&&(!b||(it.sale.date&&inRange(it.sale.date,b)))){
+      rev+=saleGross(it);fees+=saleFees(it);cost+=itemCost(t,it);profit+=saleProfit(t,it);n++;
+      const d=daysToSell(t,it);if(d!=null){days+=d;daysN++;}
+    }
+  }));
+  return {rev,fees,cost,profit,n,margin:rev>0?profit/rev*100:0,avgDays:daysN?days/daysN:null};
+}
+function insightBounds(){
+  const cf=document.getElementById('lineFrom')?document.getElementById('lineFrom').value:'';
+  const ct=document.getElementById('lineTo')?document.getElementById('lineTo').value:'';
+  return rangeBounds(lineRange,cf,ct);
 }
 function renderInsightStats(){
-  let total=0,items=0,pending=0;state.transactions.forEach(t=>{total+=Number(t.price)||0;items+=t.items.length;t.items.forEach(it=>{if(it.status!=='sold'&&it.status!=='void'&&it.expected!=null&&it.expected!=='')pending+=(Number(it.expected)-itemCost(t,it));});});
-  const S=soldStats();const unsoldCost=invCostSplit(null).unsold;
-  const sdates=[];flatItems().forEach(({it})=>{if(hasSaleData(it)&&it.sale.date)sdates.push(it.sale.date);});
-  let avgPW=null;if(sdates.length){sdates.sort();const first=new Date(sdates[0]+'T00:00:00');const weeks=Math.max(1,(Date.now()-first.getTime())/(7*24*3600*1000));avgPW=S.profit/weeks;}
+  const b=insightBounds();
+  const S=soldStats(b);
+  const sdates=[];flatItems().forEach(({it})=>{if(hasSaleData(it)&&it.sale.date&&inRange(it.sale.date,b))sdates.push(it.sale.date);});
+  let avgPW=null;
+  if(sdates.length){sdates.sort();const fromD=b.from?new Date(b.from+'T00:00:00'):new Date(sdates[0]+'T00:00:00');const toD=b.to?new Date(b.to+'T00:00:00'):new Date();const weeks=Math.max(1,(toD-fromD)/(7*24*3600*1000));avgPW=S.profit/weeks;}
   document.getElementById('insightStats').innerHTML=`
     <div class="stat"><div class="n">${money0(S.rev)}</div><div class="l">Gross sales</div></div>
     <div class="stat"><div class="n ${S.profit>=0?'pos':'neg'}">${money0(S.profit)}</div><div class="l">Net profit</div></div>
     <div class="stat"><div class="n ${avgPW==null||avgPW>=0?'pos':'neg'}">${avgPW==null?'—':money0(avgPW)}</div><div class="l">Avg profit / week</div></div>
     <div class="stat"><div class="n">${S.margin.toFixed(0)}%</div><div class="l">Avg margin</div></div>
-    <div class="stat"><div class="n">${S.n}</div><div class="l">Items sold</div></div>
-    <div class="stat"><div class="n">${S.sellThrough.toFixed(0)}%</div><div class="l">Sell-through</div></div>
-    <div class="stat"><div class="n">${S.avgDays!=null?Math.round(S.avgDays)+'d':'—'}</div><div class="l">Avg days to sell</div></div>
-    <div class="stat"><div class="n">${money0(total)}</div><div class="l">Total spend</div></div>
-    <div class="stat"><div class="n">${money0(unsoldCost)}</div><div class="l">Inventory at cost</div></div>
-    <div class="stat"><div class="n ${pending>=0?'pos':'neg'}">${money0(pending)}</div><div class="l">Pending profit</div></div>`;
+    <div class="stat"><div class="n">${S.n}</div><div class="l">Items sold</div></div>`;
 }
 function setPeriod(p){period=p;document.querySelectorAll('.ptab').forEach(b=>b.classList.toggle('active',b.dataset.p===p));renderCharts();}
 /* fresh option builders (no shared object refs) */
@@ -2696,7 +2705,7 @@ function renderLine(){
     {label:'Net profit',data:keys.map(k=>prof[k]),borderColor:'#4f9cff',backgroundColor:'rgba(79,156,255,.16)',fill:true,tension:.3,pointRadius:3,pointBackgroundColor:'#4f9cff'}
   ]},options:optLine()});
 }
-function onLineRange(){lineRange=document.getElementById('lineRangeSel').value;document.getElementById('lineCustom').style.display=lineRange==='custom'?'inline-flex':'none';renderLine();}
+function onLineRange(){lineRange=document.getElementById('lineRangeSel').value;document.getElementById('lineCustom').style.display=lineRange==='custom'?'inline-flex':'none';renderLine();renderInsightStats();}
 function lbStats(t,it){const paid=itemCost(t,it);const prof=saleProfit(t,it);const g=saleGross(it);return{paid,prof,mp:g>0?prof/g*100:0,roi:paid>0?prof/paid*100:0};}
 function lbHtml(rows){
   if(!rows.length)return '<div class="hint" style="padding:14px">No sales with details yet — add them via the ✓ button.</div>';
