@@ -2075,9 +2075,9 @@
           <button class="fbtn on" id="unsoldToggle" onclick="toggleUnsold()" title="Include or exclude unsold (held) stock cost">Unsold items: on</button>
           <button class="fbtn" onclick="exportIncomeCSV()" title="Download this income statement as CSV">⤓ Export</button>
           <select class="rangesel" id="stmtRangeSel" onchange="renderIncomeStatement()">
-            <option value="fy">This financial year</option>
+            <option value="fy" selected="">This financial year</option>
             <option value="lastfy">Last financial year</option>
-            <option value="all" selected="">All time</option>
+            <option value="all">All time</option>
           </select>
           </div>
         </div>
@@ -2802,7 +2802,15 @@ function estIncomeTax(taxable){
   }
   return tax;
 }
-function fyBase(s){const b=state.baseIncomeFY&&state.baseIncomeFY[s];return Number(b)||0;}
+function fyBase(s){
+  if(!state.baseIncomeFY)return 0;
+  const own=state.baseIncomeFY[s];
+  if(own!=null&&own!=='')return Number(own)||0;
+  // carry forward: use the most recent earlier year that has a value entered
+  const yrs=Object.keys(state.baseIncomeFY).map(Number).filter(y=>y<=s).sort((a,b)=>b-a);
+  for(const y of yrs){const v=state.baseIncomeFY[y];if(v!=null&&v!=='')return Number(v)||0;}
+  return 0;
+}
 function setFYBase(s,v){if(!state.baseIncomeFY)state.baseIncomeFY={};state.baseIncomeFY[s]=(v===''||v==null)?0:num(v);save();renderTaxReport();}
 function renderTaxReport(){
   if(state.baseIncome!=null&&!state.baseIncomeFY){const d=new Date(),cur=(d.getMonth()+1)>=7?d.getFullYear():d.getFullYear()-1;state.baseIncomeFY={[cur]:Number(state.baseIncome)||0};delete state.baseIncome;save();}
@@ -2817,11 +2825,11 @@ function renderTaxReport(){
   let h='<table class="stmt"><thead><tr><td>Financial year</td><td class="r">Gross sales</td><td class="r">COGS</td><td class="r">Fees</td><td class="r">Deductions</td><td class="r">Net (taxable)</td><td class="r">Other income</td><td class="r">Est. tax</td></tr></thead><tbody>';
   years.forEach(s=>{const r=fy[s];const net=r.income-r.cogs-r.fees-r.exp;const base=fyBase(s);const tax=estIncomeTax(base+net)-estIncomeTax(base);
     h+=`<tr><td>${fyLabel(s)}</td><td class="r">${money(r.income)}</td><td class="r">${money(r.cogs)}</td><td class="r">${money(r.fees)}</td><td class="r">${money(r.exp)}</td><td class="r ${net>=0?'pos':'neg'}">${money(net)}</td><td class="r"><input type="number" min="0" class="rangesel" style="width:100px;text-align:right" placeholder="0" value="${base?base:''}" onchange="setFYBase(${s},this.value)"></td><td class="r">${money(tax)}</td></tr>`;});
-  h+='</tbody></table><div class="hint" style="margin-top:8px">“Est. tax” is the tax on this activity’s net for that year. Enter your other taxable income (wages etc.) for a year and it becomes the <em>extra</em> tax on top of that income, at your 2025–26 ATO resident marginal rate. Excludes the Medicare levy, offsets &amp; GST — a rough guide, not tax advice.</div>';
+  h+='</tbody></table><div class="hint" style="margin-top:8px">“Est. tax” is the tax on this activity’s net for that year. Enter your other taxable income (wages etc.) for a year and it becomes the <em>extra</em> tax the profit adds on top of that income, at your ATO resident marginal rate (nil under $18,200, then 16/30/37/45%). Your entered income carries forward to later years until you change it. Excludes the Medicare levy, offsets &amp; GST — a rough guide, not tax advice.</div>';
   document.getElementById('taxReport').innerHTML=h;
 }
 function allExpTags(){const s=new Set();(state.expenses||[]).forEach(e=>expTags(e).forEach(t=>s.add(t)));return [...s].sort();}
-let ledgerTag='', ledgerPeriod='all';
+let ledgerTag='', ledgerPeriod='fy';
 function renderExpenses(){
   let list=[...(state.expenses||[])];
   if(ledgerPeriod!=='all'){const b=rangeBounds(ledgerPeriod);list=list.filter(e=>inRange(e.date,b));}
