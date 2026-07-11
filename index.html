@@ -2137,6 +2137,9 @@
 <input type="file" id="imgInput" accept="image/*" style="display:none">
 <datalist id="catlist"><option value="Accessories"></option><option value="Apple TV"></option><option value="Cameras"></option><option value="Console Games"></option><option value="DS Consoles"></option><option value="DS Games"></option><option value="Electronics"></option><option value="Lenses"></option><option value="Mac Mini"></option><option value="Sim Racing"></option><option value="Wearables"></option></datalist>
 <datalist id="brokerlist"><option value="Ebay"></option><option value="Facebook"></option><option value="Marketplace"></option></datalist>
+<datalist id="sourcelist"><option value="Ebay"></option><option value="Facebook Marketplace"></option><option value="Gumtree"></option><option value="Cash Converters"></option><option value="In person"></option></datalist>
+<datalist id="paymethodlist"><option value="Cash"></option><option value="Bank Transfer"></option><option value="PayPal"></option><option value="Card"></option></datalist>
+<datalist id="handofflist"><option value="Pickup"></option><option value="Delivered"></option><option value="Posted"></option><option value="Met in person"></option></datalist>
 <datalist id="exptypes"><option>Shipping supplies</option><option>Postage</option><option>Platform fees</option><option>Subscriptions</option><option>Equipment</option><option>Travel</option><option>Storage</option><option>Repairs</option><option>Other</option></datalist>
 
 <!-- transaction modal -->
@@ -2148,7 +2151,12 @@
       <div class="field"><label>Transaction #</label><input id="m_txn" placeholder="e.g. 50"></div>
       <div class="field"><label>Total price ($)</label><input id="m_price" type="number" step="0.01" placeholder="0.00" oninput="updateTally()"></div>
     </div>
-    <div class="field"><label>Note (optional)</label><input id="m_note" placeholder="source, person, etc."></div>
+    <div class="grid3">
+      <div class="field"><label>Source</label><input id="m_source" list="sourcelist" placeholder="eBay, Facebook Marketplace, ..."></div>
+      <div class="field"><label>Payment method</label><input id="m_payment" list="paymethodlist" placeholder="Cash, Bank transfer, PayPal, ..."></div>
+      <div class="field"><label>Handoff</label><input id="m_handoff" list="handofflist" placeholder="Pickup, Delivered, ..."></div>
+    </div>
+    <div class="field"><label>Note (optional)</label><input id="m_note" placeholder="extra notes"></div>
     <div class="itemsedit">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span class="hint">Lowercase label = single item, UPPERCASE = bundle. Set each item's cost &amp; expected resale value.</span>
@@ -2379,6 +2387,9 @@ function flatItems(){const rows=[];state.transactions.forEach(t=>t.items.forEach
 function primaryType(it){return (it.tags&&it.tags[0])||'Untyped';}
 function allTypes(){const s=new Set();flatItems().forEach(({it})=>(it.tags||[]).forEach(x=>s.add(x)));return[...s].sort();}
 function allBrokers(){const s=new Set();flatItems().forEach(({it})=>{if(it.sale&&it.sale.broker)s.add(it.sale.broker);});return[...s].sort();}
+function allSources(){const s=new Set();state.transactions.forEach(t=>{if(t.source)s.add(t.source);});return[...s].sort();}
+function allPaymentMethods(){const s=new Set();state.transactions.forEach(t=>{if(t.paymentMethod)s.add(t.paymentMethod);});return[...s].sort();}
+function allHandoffs(){const s=new Set();state.transactions.forEach(t=>{if(t.handoff)s.add(t.handoff);});return[...s].sort();}
 function itemRef(t,it){return `${t.txnNumber}${(it.label||'').toLowerCase()}`;}
 function itemCost(t,it){return it.cost!=null?Number(it.cost):(Number(t.price)||0)/(t.items.length||1);}
 function labelChip(t,it){
@@ -3127,7 +3138,7 @@ function saveSale(){if(!saleRef)return;const s=readSale();const cost=num(documen
 function markUnsold(){if(!saleRef)return;saleRef.it.sale=null;saleRef.it.status='listed';save();renderAll();closeSale();}
 
 /* ---------------- transaction modal ---------------- */
-function refreshLists(){document.getElementById('catlist').innerHTML=allTypes().map(c=>`<option value="${esc(c)}">`).join('');document.getElementById('brokerlist').innerHTML=allBrokers().map(c=>`<option value="${esc(c)}">`).join('');}
+function refreshLists(){document.getElementById('catlist').innerHTML=allTypes().map(c=>`<option value="${esc(c)}">`).join('');document.getElementById('brokerlist').innerHTML=allBrokers().map(c=>`<option value="${esc(c)}">`).join('');document.getElementById('sourcelist').innerHTML=allSources().map(c=>`<option value="${esc(c)}">`).join('');document.getElementById('paymethodlist').innerHTML=allPaymentMethods().map(c=>`<option value="${esc(c)}">`).join('');document.getElementById('handofflist').innerHTML=allHandoffs().map(c=>`<option value="${esc(c)}">`).join('');}
 function openModal(txnId){
   editingId=txnId||null;refreshLists();
   document.getElementById('modaltitle').textContent=txnId?'Edit transaction':'Add transaction';
@@ -3136,12 +3147,12 @@ function openModal(txnId){
   if(txnId){
     const t=state.transactions.find(x=>x.id===txnId);
     document.getElementById('m_date').value=t.date;document.getElementById('m_txn').value=t.txnNumber;
-    document.getElementById('m_price').value=t.price;document.getElementById('m_note').value=t.note||'';
+    document.getElementById('m_price').value=t.price;document.getElementById('m_source').value=t.source||'';document.getElementById('m_payment').value=t.paymentMethod||'';document.getElementById('m_handoff').value=t.handoff||'';document.getElementById('m_note').value=t.note||'';
     t.items.forEach(it=>addItemRow(it));
   }else{
     document.getElementById('m_date').value=new Date().toISOString().slice(0,10);
     document.getElementById('m_txn').value=Math.max(0,...state.transactions.map(t=>Number(t.txnNumber)||0))+1;
-    document.getElementById('m_price').value='';document.getElementById('m_note').value='';addItemRow();
+    document.getElementById('m_price').value='';document.getElementById('m_source').value='';document.getElementById('m_payment').value='';document.getElementById('m_handoff').value='';document.getElementById('m_note').value='';addItemRow();
   }
   updateTally();document.getElementById('overlay').classList.add('show');
 }
@@ -3197,15 +3208,15 @@ function renderTagEditor(div){
 function removeTag(el){const div=el.closest('.itemedit');const span=el.closest('.tag');const idx=[...div.querySelectorAll('.tagedit .tag')].indexOf(span);const arr=JSON.parse(div.dataset.tags||'[]');arr.splice(idx,1);div.dataset.tags=JSON.stringify(arr);renderTagEditor(div);}
 function saveTxn(){
   const date=document.getElementById('m_date').value;const txnNumber=document.getElementById('m_txn').value.trim();
-  const price=parseFloat(document.getElementById('m_price').value)||0;const note=document.getElementById('m_note').value.trim();
+  const price=parseFloat(document.getElementById('m_price').value)||0;const source=document.getElementById('m_source').value.trim();const paymentMethod=document.getElementById('m_payment').value.trim();const handoff=document.getElementById('m_handoff').value.trim();const note=document.getElementById('m_note').value.trim();
   if(!txnNumber){alert('Enter a transaction number.');return;}
   const items=[...document.querySelectorAll('#itemsContainer .itemedit')].map(div=>{
     const label=div.querySelector('.i_label').value.trim()||'a';const expv=div.querySelector('.i_exp').value;
     return {id:uid(),label,name:div.querySelector('.i_name').value.trim()||'(unnamed)',isBundle:div.querySelector('.i_bundle').checked||/[A-Z]/.test(label),status:div.querySelector('.i_status').value,tags:JSON.parse(div.dataset.tags||'[]'),cost:num(div.querySelector('.i_cost').value),expected:expv===''?null:num(expv),sale:JSON.parse(div.dataset.sale||'null'),img:div.dataset.imgdata||null};
   });
   if(!items.length){alert('Add at least one item.');return;}
-  if(editingId){Object.assign(state.transactions.find(x=>x.id===editingId),{date,txnNumber,price,note,items});}
-  else{state.transactions.push({id:uid(),date,txnNumber,price,note,items});}
+  if(editingId){Object.assign(state.transactions.find(x=>x.id===editingId),{date,txnNumber,price,source,paymentMethod,handoff,note,items});}
+  else{state.transactions.push({id:uid(),date,txnNumber,price,source,paymentMethod,handoff,note,items});}
   save();renderAll();closeModal();
 }
 function deleteTxn(){if(!editingId)return;if(!confirm('Delete this entire transaction and its items?'))return;state.transactions=state.transactions.filter(t=>t.id!==editingId);save();renderAll();closeModal();}
