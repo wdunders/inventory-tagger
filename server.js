@@ -339,7 +339,7 @@ app.get('/api/ebay/debug', async (req, res) => {
     let orders = (o.orders || []).map(x => ({
       orderId: x.orderId, pay: x.orderPaymentStatus, cancel: x.cancelStatus && x.cancelStatus.cancelState,
       date: (x.creationDate || '').slice(0, 10), total: x.pricingSummary && x.pricingSummary.total,
-      lines: (x.lineItems || []).map(l => ({ sku: l.sku, total: l.total }))
+      lines: (x.lineItems || []).map(l => ({ sku: l.sku, qty: l.quantity, listingId: String(l.legacyItemId || l.listingId || ''), total: l.total }))
     }));
     if (sku) orders = orders.filter(x => x.lines.some(l => String(l.sku || '').toLowerCase().includes(sku)));
     const ids = new Set(orders.map(x => x.orderId));
