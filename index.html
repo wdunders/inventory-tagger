@@ -2932,7 +2932,7 @@ async function ebaySync(){
     // reload fresh data from server
     const sr=await api('GET','/api/state');const sj=await sr.json();
     if(sj&&sj.data&&Array.isArray(sj.data.transactions)){state=sj.data;migrate();try{localStorage.setItem(KEY,JSON.stringify(state));}catch(_){}}
-    msg.innerHTML=`<span class="pos">Synced ${j.matched} new sold</span>${j.updated?` · refreshed ${j.updated}`:''}${j.reverted?` · corrected ${j.reverted} back to active`:''} from ${j.orders} eBay orders${j.unmatched?` · ${j.unmatched} line(s) no SKU match`:''}${j.skippedUnpaid?` · skipped ${j.skippedUnpaid} unpaid/cancelled`:''}.`;
+    msg.innerHTML=`<span class="pos">Synced ${j.matched} new sold</span>${j.updated?` · refreshed ${j.updated}`:''}${j.reverted?` · corrected ${j.reverted} back to active`:''} from ${j.orders} eBay orders${j.unmatched?` · ${j.unmatched} line(s) no SKU match`:''}${j.skippedUnpaid?` · skipped ${j.skippedUnpaid} unpaid/cancelled`:''}${j.skuOverlap?` · <span style="color:#eab308">⚠ ${j.skuOverlap} ref(s) skipped — already sold under a different listing, remove them from that listing's SKU field</span>`:''}.`;
     renderHome();
   }catch(e){msg.innerHTML='<span class="neg">Sync failed.</span>';}
 }
@@ -2980,26 +2980,54 @@ function renderHomeChart(){
 }
 
 /* ===================== CALCULATOR ===================== */
-/* eBay AU rebranded Store plans to Pro plans (May 2026). FVF 13.4% incl GST + $0.30/order. */
+/* eBay AU Pro plan fees — official schedule, updated 15 Jun 2026 (ebay.com.au/help, "eBay Pro
+   selling fees"). All amounts incl GST. The variable final value fee applies to the sale amount
+   (item + postage + tax) up to $4,000; a separate lower rate applies to the portion over $4,000. */
 const CALC_PLANS={
-  ebay_free:{label:'eBay AU — Free selling (no store)',fvf:13.4,fixed:0.30,ad:0},
-  ebay_starter:{label:'eBay AU — Pro Starter',fvf:13.4,fixed:0.30,ad:0},
-  ebay_basic:{label:'eBay AU — Pro Basic',fvf:13.4,fixed:0.30,ad:0},
-  ebay_featured:{label:'eBay AU — Pro Featured',fvf:13.4,fixed:0.30,ad:0},
-  ebay_anchor:{label:'eBay AU — Pro Anchor',fvf:13.4,fixed:0.30,ad:0},
-  local:{label:'Facebook / Gumtree / In person',fvf:0,fixed:0,ad:0},
+  ebay_starter:{label:'eBay AU — Pro Starter',sub:0,fixed:0.30,over4k:2.5},
+  ebay_basic:{label:'eBay AU — Pro Basic',sub:27.45,fixed:0.33,over4k:2.75},
+  ebay_featured:{label:'eBay AU — Pro Featured',sub:82.45,fixed:0.33,over4k:2.75},
+  ebay_anchor:{label:'eBay AU — Pro Anchor',sub:604.95,fixed:0.33,over4k:2.75},
+  local:{label:'Facebook / Gumtree / In person',sub:0,fixed:0,over4k:0},
 };
-/* eBay AU final value fee by category (incl GST). Most = 13.4%; a few differ. */
-const CALC_CATEGORIES=[['standard','Most categories',13.4],['guitars','Guitars & basses',7.25],['heavy','Heavy equipment',3],['nft','NFTs',5.5]];
+/* Final value fee % by category tier + plan. Tier 1 = Home Appliances & Technology Devices
+   (cameras, electronics, phones, video game consoles) — the cheapest tier and where most consoles/
+   cameras/electronics fall. Tier 4 = Business & Industrial, Collectables, Fashion, Media (incl.
+   video games) and Technology Accessories — where games and accessories fall. Tier 3 = vehicle
+   parts. Tier 2 = everything else. Pro Starter is a flat 13.4% across all tiers. */
+const CALC_CATEGORIES=[
+  ['t1','Tier 1 — Consoles, cameras, electronics & phones','t1'],
+  ['t2','Tier 2 — Most other categories','t2'],
+  ['t3','Tier 3 — Vehicle parts & accessories','t3'],
+  ['t4','Tier 4 — Games, collectables, accessories & fashion','t4'],
+  ['nft','NFTs','nft'],
+];
+const CALC_FVF={
+  ebay_starter:{t1:13.4,t2:13.4,t3:13.4,t4:13.4,nft:5.5},
+  ebay_basic:{t1:8.03,t2:11.44,t3:12.43,t4:13.09,nft:5.5},
+  ebay_featured:{t1:7.26,t2:10.34,t3:11.22,t4:11.77,nft:5.5},
+  ebay_anchor:{t1:6.82,t2:9.68,t3:10.56,t4:11.11,nft:5.5},
+};
 let calcInit=false;
 function v(id){return document.getElementById(id).value;}
+function categoryLabel(c,planKey){
+  if(planKey==='local')return c[1];
+  const tbl=CALC_FVF[planKey]||CALC_FVF.ebay_starter;
+  return `${c[1]} (${tbl[c[2]]}%)`;
+}
+function fillPlan(){
+  const planKey=v('c_plan');
+  const sel=document.getElementById('c_cat');const prev=sel.value;
+  sel.innerHTML=CALC_CATEGORIES.map(c=>`<option value="${c[0]}">${categoryLabel(c,planKey)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+  computeCalc();
+}
 function renderCalc(){
   if(!calcInit){
-    document.getElementById('c_plan').innerHTML=Object.entries(CALC_PLANS).map(([k,p])=>`<option value="${k}" ${k==='ebay_basic'?'selected':''}>${p.label}</option>`).join('');
-    document.getElementById('c_cat').innerHTML=CALC_CATEGORIES.map(c=>`<option value="${c[0]}">${c[1]} (${c[2]}%)</option>`).join('');
+    document.getElementById('c_plan').innerHTML=Object.entries(CALC_PLANS).map(([k,p])=>`<option value="${k}" ${k==='ebay_featured'?'selected':''}>${p.label}${p.sub?` ($${p.sub}/mo)`:''}</option>`).join('');
     calcInit=true;
   }
-  computeCalc();
+  fillPlan();
   computePaypal();
 }
 function computePaypal(){
@@ -3018,22 +3046,27 @@ function computePaypal(){
 function fillPlan(){computeCalc();
 }
 function computeCalc(){
-  const local=v('c_plan')==='local';
+  const planKey=v('c_plan');
+  const pl=CALC_PLANS[planKey]||CALC_PLANS.ebay_starter;
+  const local=planKey==='local';
   const cat=CALC_CATEGORIES.find(c=>c[0]===v('c_cat'))||CALC_CATEGORIES[0];
-  const fvfPct=local?0:cat[2];
-  const fvf=fvfPct/100, fixed=local?0:0.30, ad=0;
-  const pl=CALC_PLANS[v('c_plan')]||CALC_PLANS.ebay_free;
-  const lab=document.getElementById('c_planlabel');if(lab)lab.textContent=local?pl.label+' · no fees':`${pl.label} · ${fvfPct}% + ${money(fixed)}`;
+  const fvfPct=local?0:(CALC_FVF[planKey]||CALC_FVF.ebay_starter)[cat[2]];
+  const over4k=local?0:(pl.over4k||0)/100;
+  const fvf=fvfPct/100, fixed=local?0:pl.fixed;
+  const lab=document.getElementById('c_planlabel');if(lab)lab.textContent=local?pl.label+' · no fees':`${pl.label} · ${fvfPct}% + ${money(fixed)}${pl.sub?` (+ $${pl.sub}/mo subscription)`:''}`;
   const sale=num(v('c_sale')), shipc=num(v('c_shipchg')), cost=num(v('c_cost')), post=num(v('c_postage')), other=num(v('c_other'));
   const gross=sale+shipc;
-  const fees=gross*fvf+(sale>0?fixed:0)+sale*ad;
+  // eBay charges the tier % on the first $4,000 of the sale amount, and a lower blended % beyond that
+  const fvfAmount=gross>4000?(4000*fvf+(gross-4000)*over4k):gross*fvf;
+  const fees=fvfAmount+(sale>0?fixed:0);
   const totalCost=cost+post+other;
   const profit=gross-fees-totalCost;
   const margin=gross>0?profit/gross*100:0;
   const roi=cost>0?profit/cost*100:0;
-  const denom=1-fvf-ad;
+  // break-even & target-margin price assume the sub-$4,000 rate, which covers virtually all resale items
+  const denom=1-fvf;
   const be=denom>0?(fixed+totalCost-shipc*(1-fvf))/denom:0;
-  const tm=num(v('c_targetmargin'))/100;const td=1-fvf-ad-tm;
+  const tm=num(v('c_targetmargin'))/100;const td=1-fvf-tm;
   const tprice=td>0?(fixed+totalCost+shipc*(tm-(1-fvf)))/td:null;
   const sub=document.getElementById('c_costsub');
   if(sub)sub.innerHTML=(tprice&&tprice>0&&cost>0)?`List at ~<b style="color:var(--txt)">${money(tprice)}</b> for a ${num(v('c_targetmargin'))}% margin (after fees &amp; postage)`:'Enter a cost to see the suggested list price.';

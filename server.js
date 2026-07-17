@@ -226,8 +226,15 @@ app.post('/api/ebay/disconnect', auth, async (req, res) => {
 
 // Match eBay sales to inventory by SKU. A listing's SKU can be a comma-separated, left-to-right
 // list of refs (multi-quantity listing). We count how many UNITS eBay has sold for each listing,
-// then mark the first N refs sold (earliest sale -> leftmost ref) and revert any we'd wrongly
-// marked beyond that count.
+// then mark the first N *available* refs sold (earliest sale -> leftmost ref) and revert any we'd
+// wrongly marked beyond that count.
+//
+// Guard against stale/duplicate SKUs across listings: if you relist/restock an item and the new
+// listing's SKU field still has old refs left in it from a previous (now sold-out) listing, those
+// refs are skipped rather than re-claimed — a ref that's already sold (via a DIFFERENT listing's
+// order) is permanently off-limits to every other listing. This means it no longer matters if a
+// new listing's SKU accidentally repeats refs that already sold elsewhere; the app will correctly
+// skip past them and assign the new sale to the next genuinely-unsold ref instead.
 function applyEbayOrders(state, orders, feeByOrder) {
   // refs are unique (txnNumber + label), so index every item by ref
   const byRef = {};
@@ -261,13 +268,23 @@ function applyEbayOrders(state, orders, feeByOrder) {
     });
   });
 
-  let matched = 0, updated = 0, unmatched = 0, reverted = 0;
+  let matched = 0, updated = 0, unmatched = 0, reverted = 0, skuOverlap = 0;
   Object.values(groups).forEach(g => {
     g.units.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.orderId || '').localeCompare(b.orderId || ''));
-    g.refs.forEach((ref, i) => {
+    // A ref is only "eligible" for this listing if it isn't already sold under a DIFFERENT
+    // listing's order. Refs already sold elsewhere are left completely untouched (protected) and
+    // don't consume a slot, so a later ref in the same SKU string can still be matched correctly.
+    const eligible = [];
+    g.refs.forEach(ref => {
+      const it = byRef[ref];
+      const soldElsewhere = it && it.status === 'sold' && it.sale && it.sale.ebayOrderId && !g.orderIds.has(it.sale.ebayOrderId);
+      if (soldElsewhere) { skuOverlap++; return; }
+      eligible.push(ref);
+    });
+    eligible.forEach((ref, i) => {
       const it = byRef[ref];
       if (i < g.units.length) {
-        // one of the first N refs -> SOLD (leftmost = earliest sale)
+        // one of the first N available refs -> SOLD (leftmost = earliest sale)
         if (!it) { unmatched++; return; }
         const u = g.units[i];
         const wasEbay = it.sale && it.sale.ebayOrderId;
@@ -279,9 +296,9 @@ function applyEbayOrders(state, orders, feeByOrder) {
         it.status = 'listed'; it.sale = null; reverted++;
       }
     });
-    if (g.units.length > g.refs.length) unmatched += (g.units.length - g.refs.length);
+    if (g.units.length > eligible.length) unmatched += (g.units.length - eligible.length);
   });
-  return { orders: orders.length, matched, updated, unmatched, reverted, skippedUnpaid };
+  return { orders: orders.length, matched, updated, unmatched, reverted, skippedUnpaid, skuOverlap };
 }
 
 // pull sold orders + fees, match by SKU, save
