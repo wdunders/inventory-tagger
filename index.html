@@ -3192,14 +3192,14 @@ function openModal(txnId){
 function closeModal(){document.getElementById('overlay').classList.remove('show');}
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
 function nextLabel(){return String.fromCharCode(97+[...document.querySelectorAll('#itemsContainer .itemedit')].length);}
-function addItemRow(it){
+function addItemRow(it,afterEl){
   const c=document.getElementById('itemsContainer');const div=document.createElement('div');div.className='itemedit';
   div.dataset.tags=JSON.stringify((it&&it.tags)?[...it.tags]:[]);
   div.dataset.sale=JSON.stringify(it&&it.sale?it.sale:null);
   div.dataset.img=it&&it.img?'1':'';div.dataset.imgdata=it&&it.img?it.img:'';
   div.innerHTML=`
     <div class="row">
-      <div class="field"><label>Label</label><input class="i_label" value="${it?esc(it.label):nextLabel()}"></div>
+      <div class="field"><label>Label</label><input class="i_label" value="${it&&it.label?esc(it.label):nextLabel()}"></div>
       <div class="field"><label>Item name</label><input class="i_name" value="${it?esc(it.name):''}" placeholder="What is it?"></div>
       <div class="field"><label>Cost ($)</label><input class="i_cost" type="number" step="0.01" value="${it&&it.cost!=null?it.cost:''}" placeholder="0.00" oninput="updateTally()"></div>
       <div class="field"><label>Expected value ($)</label><input class="i_exp" type="number" step="0.01" value="${it&&it.expected!=null?it.expected:''}" placeholder="resale"></div>
@@ -3208,10 +3208,33 @@ function addItemRow(it){
       <div class="field"><label>Status</label><select class="i_status">${STATUSES.map(s=>`<option value="${s.id}" ${it&&it.status===s.id?'selected':(!it&&s.id==='incoming'?'selected':'')}>${s.label}</option>`).join('')}</select></div>
       <div class="field"><label>Tags / type (Enter to add — first = type)</label><div class="tagedit"></div></div>
       <label class="toggle"><input type="checkbox" class="i_bundle" ${it&&it.isBundle?'checked':''}> Bundle</label>
+      <button class="smallbtn" onclick="duplicateItemRow(this)">Duplicate</button>
       <button class="smallbtn" style="color:var(--danger)" onclick="this.closest('.itemedit').remove();updateTally()">Remove</button>
     </div>`;
-  c.appendChild(div);renderTagEditor(div);
+  if(afterEl&&afterEl.parentNode===c)afterEl.after(div);else c.appendChild(div);
+  renderTagEditor(div);
   div.querySelector('.i_label').addEventListener('input',e=>{div.querySelector('.i_bundle').checked=/[A-Z]/.test(e.target.value);});
+  return div;
+}
+// Clone an item row for quick entry of similar items — copies name, cost, expected value, status,
+// bundle flag, tags and image, but always gets a fresh auto-generated label and never carries over
+// a sale record (a duplicate is always a new, unsold item).
+function duplicateItemRow(btn){
+  const src=btn.closest('.itemedit');
+  const cost=src.querySelector('.i_cost').value, exp=src.querySelector('.i_exp').value;
+  const clone={
+    name:src.querySelector('.i_name').value,
+    cost:cost===''?null:num(cost),
+    expected:exp===''?null:num(exp),
+    status:src.querySelector('.i_status').value,
+    isBundle:src.querySelector('.i_bundle').checked,
+    tags:JSON.parse(src.dataset.tags||'[]'),
+    img:src.dataset.imgdata||null,
+    sale:null,
+  };
+  const div=addItemRow(clone,src);
+  updateTally();
+  const nameEl=div.querySelector('.i_name');nameEl.focus();nameEl.select();
 }
 function updateTally(){
   const rows=[...document.querySelectorAll('#itemsContainer .itemedit')];

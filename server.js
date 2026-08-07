@@ -91,7 +91,7 @@ app.get('/api/backups', async (req, res) => {
   if (!(req.headers['x-auth'] === TOKEN || passwordOk(req.query.pw))) return res.status(401).json({ error: 'unauthorized — add ?pw=YOURCODE' });
   if (!pool) return res.json({ backups: [] });
   try {
-    const r = await pool.query('SELECT id, ts, jsonb_array_length(COALESCE(data->\'transactions\',\'[]\'::jsonb)) AS deals FROM backups ORDER BY ts DESC LIMIT 72');
+    const r = await pool.query('SELECT id, ts, jsonb_array_length(COALESCE(data->\'transactions\',\'[]\'::jsonb)) AS deals FROM backups ORDER BY ts DESC LIMIT $1', [BACKUP_RETENTION]);
     res.json({ backups: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -131,8 +131,13 @@ async function loadStateInternal() {
   if (pool) { const r = await pool.query('SELECT data FROM app_state WHERE id=1'); return r.rows[0] ? r.rows[0].data : null; }
   return mem;
 }
-// snapshot the CURRENT stored state into backups (throttled ~hourly, keeps last 72) so any
-// bad overwrite is always recoverable
+const BACKUP_RETENTION = 12; // how many auto-snapshots to keep (was 72 — that plus full photo
+// duplication in every snapshot is what filled the Postgres volume)
+
+// snapshot the CURRENT stored state into backups (throttled ~hourly, keeps last BACKUP_RETENTION)
+// so any bad overwrite is always recoverable. Photos are stripped out of the snapshot — they're by
+// far the largest part of the data, and duplicating every photo on every snapshot is what was
+// filling the disk. The live app_state row (and your manual Exports) still have full photos.
 async function snapshotBackup() {
   if (!pool) return;
   try {
@@ -141,9 +146,15 @@ async function snapshotBackup() {
     if (Date.now() - lastMs < 55 * 60 * 1000) return;
     const cur = await pool.query('SELECT data FROM app_state WHERE id=1');
     if (!cur.rows[0] || !cur.rows[0].data) return;
-    await pool.query('INSERT INTO backups(data) VALUES($1)', [cur.rows[0].data]);
-    await pool.query('DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY ts DESC LIMIT 72)');
+    await pool.query('INSERT INTO backups(data) VALUES($1)', [stripImages(cur.rows[0].data)]);
+    await pool.query('DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY ts DESC LIMIT $1)', [BACKUP_RETENTION]);
   } catch (e) { console.error('backup:', e.message); }
+}
+// deep-clone state with every item's photo removed (see snapshotBackup above)
+function stripImages(data) {
+  const clone = JSON.parse(JSON.stringify(data));
+  (clone.transactions || []).forEach(t => (t.items || []).forEach(it => { if (it.img) it.img = null; }));
+  return clone;
 }
 async function saveStateInternal(d) {
   if (pool) { await snapshotBackup(); await pool.query('INSERT INTO app_state(id,data,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET data=$1,updated_at=now()', [d]); }
